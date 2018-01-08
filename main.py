@@ -18,10 +18,6 @@ print(tf.__version__)
 # for embeddings use pretrained VGG16, fine tune?
 # encoder - decoder, try to write class? Look at zhusuan new classes
 
-params = Parameters()
-params.parse_args()
-coco_dir = params.coco_dir
-
 def main():
     # load data, class data contains captions, images, image features (if avaliable)
     base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
@@ -144,4 +140,7 @@ def main():
         print("Model saved in file: %s" % save_path)
 
 if __name__ == '__main__':
+    params = Parameters()
+    params.parse_args()
+    coco_dir = params.coco_dir
     main()
