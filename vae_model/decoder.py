@@ -60,16 +60,18 @@ class Decoder():
             #    tf.add_to_collection('rnn_decoder_state1_input', tensor)
             #max_sl = tf.shape(self.captions)[1]
             z_dec = tf.expand_dims(z, 1)
-
-            cell_0 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
-                                       base_cell=tf.contrib.rnn.LSTMCell)
-            _, final_state_0 = tf.nn.dynamic_rnn(cell_0, inputs=z_dec,
-                                                    sequence_length=None,
-                                                    initial_state=None,
-                                                    swap_memory=True, dtype=tf.float32)
+            if not params.no_encoder:
+                cell_0 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
+                                           base_cell=tf.contrib.rnn.LSTMCell)
+                _, final_state_0 = tf.nn.dynamic_rnn(cell_0, inputs=z_dec,
+                                                        sequence_length=None,
+                                                        initial_state=None,
+                                                        swap_memory=True, dtype=tf.float32)
             with tf.variable_scope("decoder1") as scope2:
                 cell_1 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
                                            base_cell=tf.contrib.rnn.LSTMCell)
+                if params.no_encoder:
+                    final_state_0 = None
                 _, final_state_1 = tf.nn.dynamic_rnn(cell_1, inputs=inp_flatten,
                                                         sequence_length=None,
                                                         initial_state=final_state_0,

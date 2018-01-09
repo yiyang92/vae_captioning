@@ -7,8 +7,8 @@ from utils.captions import Captions
 
 # batch generator
 class Batch_Generator():
-    def __init__(self, train_dir, train_cap_json,
-                 captions, batch_size=None,
+    def __init__(self, train_dir, train_cap_json=None,
+                 captions=None, batch_size=None,
                  im_shape=(299, 299), feature_dict=None,
                  get_image_ids=False):
         """
@@ -29,9 +29,11 @@ class Batch_Generator():
             self._batch_size = len(self._iterable)
         if len(self._iterable) == 0:
             raise FileNotFoundError
-        self._train_cap_json = train_cap_json
-        self.cap_instance = captions
-        self.captions = self.cap_instance.captions_indexed
+        # test set doesnt contain true captions
+        if train_cap_json and captions:
+            self._train_cap_json = train_cap_json
+            self.cap_instance = captions
+            self.captions = self.cap_instance.captions_indexed
         # seed for reproducibility
         self.random_seed = 42
         np.random.seed(self.random_seed)
@@ -81,6 +83,37 @@ class Batch_Generator():
                 yield images, (inp_captions, l_captions), lengths, image_ids
             else:
                 yield images, (inp_captions, l_captions), lengths
+
+    def next_train_batch(self):
+        self.get_image_ids = get_image_ids
+        imn_batch  = [None] * self._batch_size
+        for i, item in enumerate(self._iterable):
+            inx = i % self._batch_size
+            imn_batch[inx] = item
+            if inx == self._batch_size - 1:
+                if self.feature_dict:
+                    images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
+                    images = np.squeeze(np.array(images), 1)
+                else:
+                    images = self._get_images(imn_batch)
+                image_ids = []
+                for fn in imn_batch:
+                    id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                    image_ids.append(id_)
+                yield images, image_ids
+                imn_batch = [None] * self._batch_size
+        if imn_batch[0]:
+            imn_batch = [item for item in imn_batch if item]
+            if self.feature_dict:
+                images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
+                images = np.squeeze(np.array(images), 1)
+            else:
+                images = self._get_images(imn_batch)
+            image_ids = []
+            for fn in imn_batch:
+                id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                image_ids.append(id_)
+            yield images, image_ids
 
     def _get_images(self, names):
         images = []

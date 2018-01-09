@@ -1,10 +1,10 @@
-import os
 from utils.data import Data
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 from utils.parameters import Parameters
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
 
+import os
 import json
 import numpy as np
 import tensorflow as tf
@@ -12,7 +12,7 @@ import zhusuan as zs
 from tensorflow import layers
 from tensorflow.python.util.nest import flatten
 # import utils
-print(tf.__version__)
+print("Tensorflow version: ", tf.__version__)
 
 
 # for embeddings use pretrained VGG16, fine tune?
@@ -26,6 +26,7 @@ def main():
                                           outputs=base_model.get_layer('fc2').output)
     data = Data(coco_dir, True, model)
     val_gen = data.get_valid_data(500)
+    test_gen = data.get_test_data(500)
     # load batch generator
     batch_gen = data.load_train_data_generator(params.batch_size)
     # annotations vector of form <EOS>...<BOS><PAD>...
@@ -66,9 +67,11 @@ def main():
     anneal = tf.placeholder_with_default(0, [])
     annealing = (tf.tanh((tf.to_float(anneal) - 5500)/1000) + 1)/2
     # overall loss reconstruction loss - kl_regularization
-    lower_bound = tf.reduce_mean(tf.to_float(ann_lengths)) * rec_loss + tf.multiply(tf.to_float(annealing), tf.to_float(kld))
+    if not params.no_encoder:
+        lower_bound = tf.reduce_mean(tf.to_float(ann_lengths)) * rec_loss + tf.multiply(tf.to_float(annealing), tf.to_float(kld))
+    else:
+        lower_bound = rec_loss
     #lower_bound = rec_loss + tf.to_float(kld)
-    #lower_bound = rec_loss
     # we need to maximize lower_bound
     gradients = tf.gradients(lower_bound, tf.trainable_variables())
     grads_vars = zip(gradients, tf.trainable_variables())
@@ -77,7 +80,6 @@ def main():
     # model restore
     saver = tf.train.Saver()
     with tf.Session() as sess:
-        # TODO: look documentation: local-global variables
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
         # train using batch generator, every iteration get
@@ -125,7 +127,15 @@ def main():
             #     captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
             # with open("./val_gen.json", 'w') as wj:
             #     json.dump(captions_gen, wj)
-        # evaluate
+        # test set
+        captions_gen = []
+        print("Generating captions for val file")
+        for f_images_batch, image_ids in val_gen.next_batch(get_image_ids=True):
+            captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
+        with open("./test_gen.json", 'w') as wj:
+            print("saving json file")
+            json.dump(captions_gen, wj)
+        # validation set
         captions_gen = []
         print("Generating captions for val file")
         for f_images_batch, captions_batch, cl_batch, image_ids in val_gen.next_batch(get_image_ids=True):

@@ -32,7 +32,7 @@ class Parameters():
     is_training = True
     LOG_DIR = './model_logs/'
     visualise = False
-    #base_cell = tf.contrib.rnn.LSTMCel
+    no_encoder = False
     vocab_size = 0 # need to be set during data load
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
     def parse_args(self):
@@ -50,6 +50,8 @@ class Parameters():
         parser.add_argument('--gpu', help="specify GPU number")
         parser.add_argument('--coco_dir', default=self.coco_dir, help="mscoco directory")
         parser.add_argument('--epochs', default=self.num_epochs, help="number of training epochs")
+        parser.add_argument('--no_encoder', help="use this if want to run baseline lstm",
+                            action="store_true")
 
         args = parser.parse_args()
         self.learning_rate = args.lr
@@ -61,6 +63,7 @@ class Parameters():
         self.restore = True if args.rest == 1 else False
         self.coco_dir = args.coco_dir
         self.num_epochs = int(args.epochs)
+        self.no_encoder = args.no_encoder
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

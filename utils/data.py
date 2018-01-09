@@ -82,7 +82,7 @@ class Data():
                     pickle.dump(feature_dict, wf)
         return feature_dict
 
-    def get_valid_data(self, val_batch_size):
+    def get_valid_data(self, val_batch_size=None):
         """
         Get validation data, used Batch_Generator() without specifying batch
         size parameter (meaning will generate all data at once) for convenience.
@@ -96,9 +96,17 @@ class Data():
                                               get_image_ids=True)
         return self.valid_batch_gen
 
-    def test_data():
+    def get_test_data(self, test_batch_size=None):
         """
         Get test data images, evaluation is done on a test server.
+        Args:
+            test_batch_size: set size of generated batches
+        Returns:
+            Test batch generator
         """
         # TODO: finish implementation
-        test_feature_dict = self.extract_features(self.valid_dir, self.ex_features_model)
+        test_feature_dict = self.extract_features(self.train_dir, self.ex_features_model)
+        self.train_batch_gen = Batch_Generator(self.train_dir,
+                                               batch_size=test_batch_size,
+                                               feature_dict=test_feature_dict,
+                                               get_image_ids=True)
