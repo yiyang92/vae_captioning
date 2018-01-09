@@ -105,6 +105,5 @@ class Dictionary(object):
         self._idx2word[0] = '<PAD>'
         self._word2idx['<PAD>'] = 0
 
-
     def __len__(self):
         return len(self.idx2word)

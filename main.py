@@ -14,11 +14,10 @@ from tensorflow.python.util.nest import flatten
 # import utils
 print("Tensorflow version: ", tf.__version__)
 
-
 # for embeddings use pretrained VGG16, fine tune?
 # encoder - decoder, try to write class? Look at zhusuan new classes
 
-def main():
+def main(params):
     # load data, class data contains captions, images, image features (if avaliable)
     base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
                                                      include_top=True)
@@ -79,7 +78,9 @@ def main():
     optimize = tf.train.AdamOptimizer(params.learning_rate).apply_gradients(grads_vars)
     # model restore
     saver = tf.train.Saver()
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
         # train using batch generator, every iteration get
@@ -87,6 +88,7 @@ def main():
         cur_t = 0
         if params.restore:
             # TODO: add checkpoint naming
+            print("Restoring from checkpoint")
             saver.restore(sess, "./checkpoints/last_run.ckpt")
         for e in range(params.num_epochs):
             # TODO: add shuffle !
@@ -120,20 +122,13 @@ def main():
                     print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb), np.mean(val_rec)))
                 i += 1
                 cur_t += 1
-            # evaluate
-            # captions_gen = []
-            # print("Generating captions for val file")
-            # for f_images_batch, captions_batch, cl_batch, image_ids in val_gen.next_batch(get_image_ids=True):
-            #     captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
-            # with open("./val_gen.json", 'w') as wj:
-            #     json.dump(captions_gen, wj)
         # test set
         captions_gen = []
-        print("Generating captions for val file")
-        for f_images_batch, image_ids in val_gen.next_batch(get_image_ids=True):
+        print("Generating captions for test file")
+        for f_images_batch, image_ids in test_gen.next_train_batch():
             captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
         with open("./test_gen.json", 'w') as wj:
-            print("saving json file")
+            print("saving test json file")
             json.dump(captions_gen, wj)
         # validation set
         captions_gen = []
@@ -141,7 +136,7 @@ def main():
         for f_images_batch, captions_batch, cl_batch, image_ids in val_gen.next_batch(get_image_ids=True):
             captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
         with open("./val_gen.json", 'w') as wj:
-            print("saving json file")
+            print("saving val json file")
             json.dump(captions_gen, wj)
         # save model
         if not os.path.exists("./checkpoints"):
@@ -153,4 +148,4 @@ if __name__ == '__main__':
     params = Parameters()
     params.parse_args()
     coco_dir = params.coco_dir
-    main()
+    main(params)

@@ -5,7 +5,7 @@ class Parameters():
     learning_rate = 0.0001
     batch_size = 128
     # for decoding
-    temperature = 0.6
+    temperature = 0.8
     gen_length = 20
     # beam search
     beam_search = True
@@ -46,12 +46,13 @@ class Parameters():
         parser.add_argument('--lst_state_dim_dec', default=self.decoder_hidden, help='decoder state size', dest='dec_hid')
         parser.add_argument('--latent', default=self.latent_size, help='latent space size', dest='latent')
         parser.add_argument('--dec_dropout', default=self.dec_keep_rate, help='decoder dropout keep rate', dest='dec_drop')
-        parser.add_argument('--restore', default=self.restore, help='whether restore', dest='rest')
+        parser.add_argument('--restore', help='whether restore', action="store_true")
         parser.add_argument('--gpu', help="specify GPU number")
         parser.add_argument('--coco_dir', default=self.coco_dir, help="mscoco directory")
         parser.add_argument('--epochs', default=self.num_epochs, help="number of training epochs")
         parser.add_argument('--no_encoder', help="use this if want to run baseline lstm",
                             action="store_true")
+        parser.add_argument('--temperature', default=self.temperature, help="set temperature parameter for generation")
 
         args = parser.parse_args()
         self.learning_rate = args.lr
@@ -60,10 +61,11 @@ class Parameters():
         self.decoder_hidden = args.dec_hid
         self.latent_size = args.latent
         self.dec_keep_rate = args.dec_drop
-        self.restore = True if args.rest == 1 else False
+        self.restore = args.restore
         self.coco_dir = args.coco_dir
         self.num_epochs = int(args.epochs)
         self.no_encoder = args.no_encoder
+        self.temperature = ags.temperature
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

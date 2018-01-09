@@ -2,6 +2,7 @@ import os
 from glob import glob
 import numpy as np
 import cv2
+import json
 
 from utils.captions import Captions
 
@@ -10,7 +11,7 @@ class Batch_Generator():
     def __init__(self, train_dir, train_cap_json=None,
                  captions=None, batch_size=None,
                  im_shape=(299, 299), feature_dict=None,
-                 get_image_ids=False):
+                 get_image_ids=False, get_test_ids=False):
         """
         Args:
             train_dir: coco training images directory path
@@ -30,8 +31,10 @@ class Batch_Generator():
         if len(self._iterable) == 0:
             raise FileNotFoundError
         # test set doesnt contain true captions
-        if train_cap_json and captions:
-            self._train_cap_json = train_cap_json
+        self._train_cap_json = train_cap_json
+        if get_test_ids:
+            self._fn_to_id = self._test_images_to_imid()
+        if captions:
             self.cap_instance = captions
             self.captions = self.cap_instance.captions_indexed
         # seed for reproducibility
@@ -84,8 +87,15 @@ class Batch_Generator():
             else:
                 yield images, (inp_captions, l_captions), lengths
 
+    def _test_images_to_imid(self):
+        with open(self._train_cap_json) as rf:
+            try:
+                j = json.loads(rf.read())
+            except FileNotFoundError as e:
+                raise
+        return {img['file_name']:img['id'] for img in j['images']}
+
     def next_train_batch(self):
-        self.get_image_ids = get_image_ids
         imn_batch  = [None] * self._batch_size
         for i, item in enumerate(self._iterable):
             inx = i % self._batch_size
@@ -98,7 +108,7 @@ class Batch_Generator():
                     images = self._get_images(imn_batch)
                 image_ids = []
                 for fn in imn_batch:
-                    id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                    id_ = self._fn_to_id[fn.split('/')[-1]]
                     image_ids.append(id_)
                 yield images, image_ids
                 imn_batch = [None] * self._batch_size
@@ -111,7 +121,7 @@ class Batch_Generator():
                 images = self._get_images(imn_batch)
             image_ids = []
             for fn in imn_batch:
-                id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                id_ = self._fn_to_id[fn.split('/')[-1]]
                 image_ids.append(id_)
             yield images, image_ids
 

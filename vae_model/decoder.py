@@ -60,7 +60,7 @@ class Decoder():
             #    tf.add_to_collection('rnn_decoder_state1_input', tensor)
             #max_sl = tf.shape(self.captions)[1]
             z_dec = tf.expand_dims(z, 1)
-            if not params.no_encoder:
+            if not self.params.no_encoder:
                 cell_0 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
                                            base_cell=tf.contrib.rnn.LSTMCell)
                 _, final_state_0 = tf.nn.dynamic_rnn(cell_0, inputs=z_dec,
@@ -70,7 +70,8 @@ class Decoder():
             with tf.variable_scope("decoder1") as scope2:
                 cell_1 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
                                            base_cell=tf.contrib.rnn.LSTMCell)
-                if params.no_encoder:
+                if self.params.no_encoder:
+                    print("Not using encoder")
                     final_state_0 = None
                 _, final_state_1 = tf.nn.dynamic_rnn(cell_1, inputs=inp_flatten,
                                                         sequence_length=None,
@@ -119,7 +120,7 @@ class Decoder():
             _, _, shpe, states = self.px_z_fi({}, gen_mode = True)
         init_state, out_state, sample = states
         for i in range(len(cap_list)):
-            cap_list[i] = {'caption': '', 'image_id': picture_ids[i]}
+            cap_list[i] = {'image_id': picture_ids[i], 'caption': ' '}
             sentence = ['<BOS>']
             cur_it = 0
             gen_word_idx = 0
@@ -139,5 +140,6 @@ class Decoder():
                 gen_word = self.data_dict.idx2word[gen_word_idx]
                 sentence += [gen_word]
                 cur_it += 1
-            cap_list[i]['caption'] = [word for word in sentence if word not in ['<BOS>']]
+            cap_list[i]['caption'] = ' '.join([word for word in sentence
+                                               if word not in ['<BOS>', '<EOS>']])
         return cap_list

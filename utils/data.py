@@ -12,9 +12,9 @@ from utils.captions import Captions, Dictionary
 class Data():
     def __init__(self, coco_path, extract_features=False, ex_features_model=None):
         # captions
-        # TODO: implement test captions evaluations on mscoco server
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
         self.valid_cap_json = coco_path + "annotations/captions_val2014.json"
+        self.test_cap_json = coco_path + "annotations/image_info_test2014.json"
         # image paths
         self.train_dir = coco_path + "images/train2014/"
         self.valid_dir = coco_path + "images/val2014/"
@@ -104,9 +104,9 @@ class Data():
         Returns:
             Test batch generator
         """
-        # TODO: finish implementation
-        test_feature_dict = self.extract_features(self.train_dir, self.ex_features_model)
-        self.train_batch_gen = Batch_Generator(self.train_dir,
+        test_feature_dict = self.extract_features(self.test_dir, self.ex_features_model)
+        self.train_batch_gen = Batch_Generator(self.test_dir, train_cap_json=self.test_cap_json,
                                                batch_size=test_batch_size,
                                                feature_dict=test_feature_dict,
-                                               get_image_ids=True)
+                                               get_image_ids=True, get_test_ids=True)
+        return self.train_batch_gen
