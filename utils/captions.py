@@ -96,7 +96,10 @@ class Dictionary(object):
 
     def build_vocabulary(self):
         counter = Counter(self._words)
+        # words, that occur less than 5 times dont include
         sorted_dict = sorted(counter.items(), key= lambda x: (-x[1], x[0]))
+        sorted_dict = [(wd, count) for wd, count in sorted_dict
+                       if count >= 3 or wd == '<UNK>']
         # after sorting the dictionary, get ordered words
         words, _ = list(zip(*sorted_dict))
         self._word2idx = dict(zip(words, range(1, len(words) + 1)))
@@ -104,6 +107,7 @@ class Dictionary(object):
         # add <PAD> as zero
         self._idx2word[0] = '<PAD>'
         self._word2idx['<PAD>'] = 0
+        print("Vocabulary size: ", len(self._word2idx))
 
     def __len__(self):
         return len(self.idx2word)

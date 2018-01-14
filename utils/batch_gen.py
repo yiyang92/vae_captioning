@@ -3,6 +3,7 @@ from glob import glob
 import numpy as np
 import cv2
 import json
+from random import shuffle
 
 from utils.captions import Captions
 
@@ -29,6 +30,8 @@ class Batch_Generator():
             print("use all data")
             self._batch_size = len(self._iterable)
         if len(self._iterable) == 0:
+            print("Check images files avaliability")
+            print("Coco dir: ", train_dir)
             raise FileNotFoundError
         # test set doesnt contain true captions
         self._train_cap_json = train_cap_json
@@ -47,6 +50,9 @@ class Batch_Generator():
 
     def next_batch(self, get_image_ids = False):
         self.get_image_ids = get_image_ids
+        self._iterable = list(self._iterable)
+        # shuffle
+        shuffle(self._iterable)
         imn_batch  = [None] * self._batch_size
         for i, item in enumerate(self._iterable):
             inx = i % self._batch_size
@@ -54,8 +60,7 @@ class Batch_Generator():
             if inx == self._batch_size - 1:
                 if self.feature_dict:
                     images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
-                    # NOTE: dont forget to squueze dimensions aquiring val/test
-                    # or retrain feature vectors
+                    # squeeze [batch_size, 1, 4096]
                     images = np.squeeze(np.array(images), 1)
                 else:
                     images = self._get_images(imn_batch)

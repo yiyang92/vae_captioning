@@ -122,21 +122,29 @@ def main(params):
                     print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb), np.mean(val_rec)))
                 i += 1
                 cur_t += 1
+        # validation set
+        captions_gen = []
+        print("Generating captions for val file")
+        acc, caps = [], []
+        for f_images_batch, captions_batch, cl_batch, image_ids in val_gen.next_batch(get_image_ids=True):
+            sent, cap_raw = decoder.online_inference(sess, image_ids, f_images_batch)
+            captions_gen += sent
+            # calculate accuracy
+            pad = len(captions_batch[1][0])
+            caps_gen = np.array([cap + [0] * (pad - len(cap)) for cap in cap_raw])
+            acc.append(np.sum(np.equal(caps_gen, captions_batch[1]))/500)
+        print("Generation accuracy: ", np.mean(acc, 0))
+        with open("./val_{}.json".format(params.gen_name), 'w') as wj:
+            print("saving val json file")
+            json.dump(captions_gen, wj)
         # test set
         captions_gen = []
         print("Generating captions for test file")
         for f_images_batch, image_ids in test_gen.next_train_batch():
-            captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
-        with open("./test_gen.json", 'w') as wj:
+            sent, cap_raw = decoder.online_inference(sess, image_ids, f_images_batch)
+            captions_gen += sent
+        with open("./test_{}.json".format(params.gen_name), 'w') as wj:
             print("saving test json file")
-            json.dump(captions_gen, wj)
-        # validation set
-        captions_gen = []
-        print("Generating captions for val file")
-        for f_images_batch, captions_batch, cl_batch, image_ids in val_gen.next_batch(get_image_ids=True):
-            captions_gen += decoder.online_inference(sess, image_ids, f_images_batch)
-        with open("./val_gen.json", 'w') as wj:
-            print("saving val json file")
             json.dump(captions_gen, wj)
         # save model
         if not os.path.exists("./checkpoints"):
