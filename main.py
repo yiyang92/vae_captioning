@@ -64,10 +64,10 @@ def main(params):
                                                   - tf.exp(qz.distribution.logstd), 1))
     # kld weight annealing
     anneal = tf.placeholder_with_default(0, [])
-    annealing = (tf.tanh((tf.to_float(anneal) - 5500)/1000) + 1)/2
+    annealing = (tf.tanh((tf.to_float(anneal) - 3100)/1000) + 1)/2
     # overall loss reconstruction loss - kl_regularization
     if not params.no_encoder:
-        lower_bound = tf.reduce_mean(tf.to_float(ann_lengths)) * rec_loss + tf.multiply(tf.to_float(annealing), tf.to_float(kld))
+        lower_bound = rec_loss + tf.multiply(tf.to_float(annealing), tf.to_float(kld))
     else:
         lower_bound = rec_loss
     #lower_bound = rec_loss + tf.to_float(kld)
@@ -85,11 +85,11 @@ def main(params):
                   tf.local_variables_initializer()])
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
-        cur_t = 0
         if params.restore:
             # TODO: add checkpoint naming
             print("Restoring from checkpoint")
             saver.restore(sess, "./checkpoints/last_run.ckpt")
+        cur_t = 0
         for e in range(params.num_epochs):
             # TODO: add shuffle !
             i = 0
@@ -102,13 +102,15 @@ def main(params):
                 # debuging print
                 if cur_t == 0:
                     _ = sess.run(prnt1, feed_dict=feed)
-                kl, rl, lb, _ = sess.run([kld, rec_loss, lower_bound, optimize], feed_dict=feed)
+                kl, rl, lb, _, ann = sess.run([kld, rec_loss, lower_bound,
+                                               optimize, annealing], feed_dict=feed)
                 if i % 500 == 0 and i != 0:
-                    print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {} KLD: {}".format(e,
-                                                                                        i,
-                                                                                        lb,
-                                                                                        rl,
-                                                                                        kl))
+                    print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
+                                                                                i,
+                                                                                lb,
+                                                                                rl,
+                                                                                ))
+                    print("Annealing coefficient: {} KLD: {}".format(ann, kl))
                     val_vlb, val_rec = [], []
                     for f_images_batch, captions_batch, cl_batch in val_gen.next_batch():
                         feed = {image_f_inputs: f_images_batch,
@@ -120,6 +122,7 @@ def main(params):
                         val_vlb.append(lb)
                         val_rec.append(rl)
                     print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb), np.mean(val_rec)))
+                    print("-----------------------------------------------")
                 i += 1
                 cur_t += 1
         # validation set
