@@ -35,10 +35,10 @@ class Decoder():
             z_mean = tf.zeros([tf.shape(self.images_fv)[0],
                                self.params.latent_size])
             z_logstd = tf.zeros([tf.shape(self.images_fv)[0],
-                                 self.params.latent_size])
+                                 self.params.latent_size]) + 0.1
             # TODO: add n_samples
             # TODO: add std as a parameter
-            z = zs.Normal('z', mean=z_mean, logstd=z_logstd + 0.1,
+            z = zs.Normal('z', mean=z_mean, logstd=z_logstd,
                           group_event_ndims=0)
             # flatten image feature vector
             inp_flatten = layers.flatten(self.images_fv)
@@ -56,15 +56,20 @@ class Decoder():
             # IDEA: z = [batch_size, latent_dim] -> [batch_size, 1, embed]
             # image features
             with tf.variable_scope("decoder1") as scope2:
-                cell_1 = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
+                cell_1 = make_rnn_cell([self.params.decoder_hidden for _ in
+                                        range(self.params.decoder_rnn_layers)],
                                            base_cell=tf.contrib.rnn.LSTMCell)
-                init_state1 = cell_1.zero_state(tf.shape(inp_flatten)[0], tf.float32)
+                init_state1 = cell_1.zero_state(tf.shape(inp_flatten)[0],
+                                                tf.float32)
                 _, final_state_1 = tf.nn.dynamic_rnn(cell_1, inputs=inp_flatten,
                                                         sequence_length=None,
                                                         initial_state=init_state1,
-                                                        swap_memory=True, dtype=tf.float32, scope=scope2)
+                                                        swap_memory=True,
+                                                        dtype=tf.float32,
+                                                        scope=scope2)
             # vector z, sampled from latent space
-            z_dec = tf.tile(tf.expand_dims(z, 0), [tf.shape(inp_flatten)[0], 1, 1])
+            #z_dec = tf.tile(tf.expand_dims(z, 0), [tf.shape(inp_flatten)[0], 1, 1])
+            z_dec = tf.expand_dims(z, 1)
             if not self.params.no_encoder:
                 cell_0 = make_rnn_cell([self.params.decoder_hidden
                                         for _ in range(self.params.decoder_rnn_layers)],
@@ -72,28 +77,39 @@ class Decoder():
                 _, final_state_0 = tf.nn.dynamic_rnn(cell_0, inputs=z_dec,
                                                         sequence_length=None,
                                                         initial_state=final_state_1,
-                                                        swap_memory=True, dtype=tf.float32)
-            cell = make_rnn_cell([self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
-                                            base_cell=tf.contrib.rnn.LSTMCell)
+                                                        swap_memory=True,
+                                                        dtype=tf.float32)
+            cell = make_rnn_cell([self.params.decoder_hidden for _ in
+                                  range(self.params.decoder_rnn_layers)],
+                                 dropout_keep_prob=0.5)
             with tf.variable_scope("decoder2") as scope3:
                 if self.params.no_encoder:
                     if not gen_mode:
                         print("Not using z")
+                    # # NN-mapping
+                    # vf_embed_map_h = layers.dense(inp_flatten,
+                    #                             self.params.decoder_hidden)
+                    # vf_embed_map_c = layers.dense(inp_flatten,
+                    #                             self.params.decoder_hidden)
+                    # initial_state = rnn_placeholders(
+                    #     (tf.contrib.rnn.LSTMStateTuple(vf_embed_map_c,
+                    #                                   vf_embed_map_h), ))
                     initial_state = rnn_placeholders(final_state_1)
                 else:
-                    initial_state = rnn_placeholders(final_state_0)
+                    init_state = rnn_placeholders(final_state_0)
                 for tensor in flatten(initial_state):
                     tf.add_to_collection('rnn_dec_inp', tensor)
                 outputs, final_state = tf.nn.dynamic_rnn(cell, inputs=vect_inputs,
                                                           sequence_length=self.lengths,
                                                           initial_state=initial_state,
-                                                          swap_memory=True, dtype=tf.float32, scope=scope3)
+                                                          swap_memory=True, dtype=tf.float32,
+                                                          scope=scope3)
                 for tensor in flatten(final_state):
                     tf.add_to_collection('rnn_dec_out', tensor)
             # output shape [batch_size, seq_length, self.params.decoder_hidden]
             outputs_r = tf.reshape(outputs, [-1, self.params.decoder_hidden])
             x_logits = tf.layers.dense(outputs_r, units=self.params.vocab_size)
-            shpe = (tf.shape(x_logits), tf.shape(inp_flatten), tf.shape(self.images_fv))
+            shpe = (tf.shape(z_dec), tf.shape(inp_flatten), tf.shape(self.images_fv))
             # for generating
             sample = None
             if gen_mode:
@@ -131,8 +147,6 @@ class Decoder():
             gen_word_idx = 0
             cap_raw.append([])
             while (cur_it < 40):
-                if gen_word_idx == stop_word_idx:
-                    break
                 input_seq = [self.data_dict.word2idx[word] for word in sentence]
                 feed = {self.captions: np.array(input_seq).reshape([1, len(input_seq)]),
                         self.lengths: [len(input_seq)],
@@ -146,6 +160,8 @@ class Decoder():
                 sentence += [gen_word]
                 cap_raw[i].append(gen_word_idx)
                 cur_it += 1
+                if gen_word_idx == stop_word_idx:
+                    break
             cap_list[i]['caption'] = ' '.join([word for word in sentence
                                                if word not in ['<BOS>', '<EOS>']])
         return cap_list, cap_raw

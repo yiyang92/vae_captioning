@@ -24,6 +24,7 @@ class Parameters():
     sent_max_size = 300
     debug = False
     gen_z_samples = 20 # according to paper (Diverse cap)
+    ann_param = 1
     # use pretrained w2vec embeddings
     pre_trained_embed = True
     fine_tune_embed = True
@@ -57,6 +58,8 @@ class Parameters():
         parser.add_argument('--gen_name', default=self.gen_name, help="prefix of generated json nam")
         parser.add_argument('--dec_drop', default=self.keep_rate, help="decoder caption dropout")
         parser.add_argument('--gen_z_samples', default=self.gen_z_samples, help="#z samples")
+        parser.add_argument('--ann_param', default=self.ann_param,
+                            help="annealing speed, more slower")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -72,6 +75,7 @@ class Parameters():
         self.gen_name = args.gen_name
         self.dec_keep_rate = float(args.dec_drop)
         self.gen_z_samples = int(args.gen_z_samples)
+        self.ann_param = float(args.ann_param)
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

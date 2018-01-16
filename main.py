@@ -64,10 +64,11 @@ def main(params):
                                                   - tf.exp(qz.distribution.logstd), 1))
     # kld weight annealing
     anneal = tf.placeholder_with_default(0, [])
-    annealing = (tf.tanh((tf.to_float(anneal) - 3100)/1000) + 1)/2
+    annealing = (tf.tanh((tf.to_float(anneal) - 1000 * params.ann_param)/1000) + 1)/2
     # overall loss reconstruction loss - kl_regularization
     if not params.no_encoder:
-        lower_bound = rec_loss + tf.multiply(tf.to_float(annealing), tf.to_float(kld))
+        lower_bound = tf.reduce_mean(tf.to_float(ann_lengths)) * rec_loss + tf.multiply(
+            tf.to_float(annealing), tf.to_float(kld))
     else:
         lower_bound = rec_loss
     #lower_bound = rec_loss + tf.to_float(kld)
@@ -133,21 +134,28 @@ def main(params):
             sent, cap_raw = decoder.online_inference(sess, image_ids, f_images_batch)
             captions_gen += sent
             # calculate accuracy
-            pad = len(captions_batch[1][0])
-            caps_gen = np.array([cap + [0] * (pad - len(cap)) for cap in cap_raw])
-            acc.append(np.sum(np.equal(caps_gen, captions_batch[1]))/500)
-        print("Generation accuracy: ", np.mean(acc, 0))
-        with open("./val_{}.json".format(params.gen_name), 'w') as wj:
-            print("saving val json file")
+            # pad = len(captions_batch[1][0])
+            # caps_gen = np.array([cap + [0] * (pad - len(cap)) for cap in cap_raw])
+            # acc.append(np.mean(np.equal(caps_gen, captions_batch[1]), 1))
+        # print("Generation accuracy: ", np.mean(acc, 0))
+        val_gen_file = "./val_{}.json".format(params.gen_name)
+        if os.path.exists(val_gen_file):
+            os.remove(val_gen_file)
+        with open(val_gen_file, 'w') as wj:
+            print("saving val json file into ", val_gen_file)
             json.dump(captions_gen, wj)
         # test set
         captions_gen = []
         print("Generating captions for test file")
         for f_images_batch, image_ids in test_gen.next_train_batch():
-            sent, cap_raw = decoder.online_inference(sess, image_ids, f_images_batch)
+            sent, cap_raw = decoder.online_inference(sess, image_ids,
+                                                     f_images_batch)
             captions_gen += sent
-        with open("./test_{}.json".format(params.gen_name), 'w') as wj:
-            print("saving test json file")
+        test_gen_file = "./test_{}.json".format(params.gen_name)
+        if os.path.exists(test_gen_file):
+            os.remove(test_gen_file)
+        with open(test_gen_file, 'w') as wj:
+            print("saving test json file into", test_gen_file)
             json.dump(captions_gen, wj)
         # save model
         if not os.path.exists("./checkpoints"):
