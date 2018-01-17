@@ -40,76 +40,52 @@ class Decoder():
             # TODO: add std as a parameter
             z = zs.Normal('z', mean=z_mean, logstd=z_logstd,
                           group_event_ndims=0)
-            # flatten image feature vector
-            inp_flatten = layers.flatten(self.images_fv)
-            inp_flatten = tf.expand_dims(inp_flatten, 1)
             # encoder and decoder have different embeddings but the same image features
             with tf.device("/cpu:0"):
                 embedding = tf.get_variable(
                         "dec_embeddings", [self.params.vocab_size, self.params.embed_size],
                         dtype=tf.float32)
                 vect_inputs = tf.nn.embedding_lookup(embedding, self.captions)
-            # dropout
+            # captions dropout
             if self.params.dec_keep_rate < 1 and not gen_mode:
                vect_inputs = tf.nn.dropout(vect_inputs, self.params.dec_keep_rate)
-            # IDEA: use MLP for mapping. f(i) = [batch_size, feature_v_size] -> [bs, 1, embed]
-            # IDEA: z = [batch_size, latent_dim] -> [batch_size, 1, embed]
-            # image features
-            with tf.variable_scope("decoder1") as scope2:
-                cell_1 = make_rnn_cell([self.params.decoder_hidden for _ in
-                                        range(self.params.decoder_rnn_layers)],
-                                           base_cell=tf.contrib.rnn.LSTMCell)
-                init_state1 = cell_1.zero_state(tf.shape(inp_flatten)[0],
-                                                tf.float32)
-                _, final_state_1 = tf.nn.dynamic_rnn(cell_1, inputs=inp_flatten,
-                                                        sequence_length=None,
-                                                        initial_state=init_state1,
-                                                        swap_memory=True,
-                                                        dtype=tf.float32,
-                                                        scope=scope2)
-            # vector z, sampled from latent space
-            #z_dec = tf.tile(tf.expand_dims(z, 0), [tf.shape(inp_flatten)[0], 1, 1])
-            z_dec = tf.expand_dims(z, 1)
-            if not self.params.no_encoder:
-                cell_0 = make_rnn_cell([self.params.decoder_hidden
-                                        for _ in range(self.params.decoder_rnn_layers)],
-                                           base_cell=tf.contrib.rnn.LSTMCell)
-                _, final_state_0 = tf.nn.dynamic_rnn(cell_0, inputs=z_dec,
-                                                        sequence_length=None,
-                                                        initial_state=final_state_1,
-                                                        swap_memory=True,
-                                                        dtype=tf.float32)
-            cell = make_rnn_cell([self.params.decoder_hidden for _ in
-                                  range(self.params.decoder_rnn_layers)],
-                                 dropout_keep_prob=0.5)
-            with tf.variable_scope("decoder2") as scope3:
+            # map image feature vector to embed_dimension
+            # TODO: place this mapping outside to feed into decoder
+            images_fv = layers.dense(self.images_fv, self.params.embed_size)
+            with tf.variable_scope("decoder") as scope:
+                cell_0 = make_rnn_cell(
+                    [self.params.decoder_hidden for _ in range(self.params.decoder_rnn_layers)],
+                    base_cell=tf.contrib.rnn.LSTMCell)
+                zero_state0 = cell_0.zero_state(
+                    batch_size=tf.shape(images_fv)[0],
+                    dtype=tf.float32)
+                # run this cell to get initial state
+                _, initial_state0 = cell_0(images_fv, zero_state0)
                 if self.params.no_encoder:
                     if not gen_mode:
                         print("Not using z")
-                    # # NN-mapping
-                    # vf_embed_map_h = layers.dense(inp_flatten,
-                    #                             self.params.decoder_hidden)
-                    # vf_embed_map_c = layers.dense(inp_flatten,
-                    #                             self.params.decoder_hidden)
-                    # initial_state = rnn_placeholders(
-                    #     (tf.contrib.rnn.LSTMStateTuple(vf_embed_map_c,
-                    #                                   vf_embed_map_h), ))
-                    initial_state = rnn_placeholders(final_state_1)
+                    initial_state = rnn_placeholders(initial_state0)
                 else:
-                    init_state = rnn_placeholders(final_state_0)
+                    # vector z, mapped into embed_dim
+                    z_dec = layers.dense(z, self.params.embed_size)
+                    _, z_state = cell_0(z_dec, initial_state0)
+                    initial_state = rnn_placeholders(z_state)
+                # captions LSTM
                 for tensor in flatten(initial_state):
                     tf.add_to_collection('rnn_dec_inp', tensor)
-                outputs, final_state = tf.nn.dynamic_rnn(cell, inputs=vect_inputs,
-                                                          sequence_length=self.lengths,
-                                                          initial_state=initial_state,
-                                                          swap_memory=True, dtype=tf.float32,
-                                                          scope=scope3)
+                outputs, final_state = tf.nn.dynamic_rnn(cell_0,
+                                                         inputs=vect_inputs,
+                                                         sequence_length=self.lengths,
+                                                         initial_state=initial_state,
+                                                         swap_memory=True,
+                                                         dtype=tf.float32)
                 for tensor in flatten(final_state):
                     tf.add_to_collection('rnn_dec_out', tensor)
             # output shape [batch_size, seq_length, self.params.decoder_hidden]
             outputs_r = tf.reshape(outputs, [-1, self.params.decoder_hidden])
             x_logits = tf.layers.dense(outputs_r, units=self.params.vocab_size)
-            shpe = (tf.shape(z_dec), tf.shape(inp_flatten), tf.shape(self.images_fv))
+            shpe = (tf.shape(z), tf.shape(self.images_fv),
+                    tf.shape(vect_inputs))
             # for generating
             sample = None
             if gen_mode:

@@ -92,6 +92,9 @@ class Dictionary(object):
         for image in self._captions:
             for cap in self._captions[image]:
                 for word in cap:
+                    word = word if word in ["<EOS>",
+                                            "<BOS>",
+                                            "<PAD>"] else word.lower()
                     self._words.append(word)
 
     def build_vocabulary(self):

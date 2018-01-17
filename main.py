@@ -92,7 +92,6 @@ def main(params):
             saver.restore(sess, "./checkpoints/last_run.ckpt")
         cur_t = 0
         for e in range(params.num_epochs):
-            # TODO: add shuffle !
             i = 0
             for tr_f_images_batch, tr_captions_batch, tr_cl_batch in batch_gen.next_batch():
                 feed = {image_f_inputs: tr_f_images_batch,

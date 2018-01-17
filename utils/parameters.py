@@ -11,7 +11,7 @@ class Parameters():
     beam_search = True
     beam_size = 3
     # encoder
-    rnn_layers = 1
+    encoder_rnn_layers = 1
     encoder_hidden = 191
     keep_rate = 1.0
     #highway_lc = 2
