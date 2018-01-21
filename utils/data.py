@@ -65,12 +65,14 @@ class Data():
             os.makedirs("./pickles")
         try:
             with open("./pickles/" + data_dir.split('/')[-2] + '.pickle', 'rb') as rf:
-                print("Loading prepared feature vector from {}".format("./pickles/" + data_dir.split('/')[-2] + '.pickle'))
+                print("Loading prepared feature vector from {}".format(
+                    "./pickles/" + data_dir.split('/')[-2] + '.pickle'))
                 feature_dict = pickle.load(rf)
         except:
             print("Extracting features")
             for img_path in tqdm(glob(data_dir + '*.jpg')):
-                img = tf.contrib.keras.preprocessing.image.load_img(img_path, target_size=im_shape)
+                img = tf.contrib.keras.preprocessing.image.load_img(img_path,
+                                                                    target_size=im_shape)
                 x = tf.contrib.keras.preprocessing.image.img_to_array(img)
                 x = np.expand_dims(x, axis=0)
                 x = tf.contrib.keras.applications.vgg16.preprocess_input(x)

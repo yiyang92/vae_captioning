@@ -7,7 +7,7 @@ class Encoder():
     def __init__(self, images_fv, captions, lengths, params):
         """
         Args:
-            images_fv: image features placeholder
+            images_fv: image features mapping to word embeddings
             captions: captions input placeholder
             lengths: caption length without zero-padding, used for tensorflow
             params: Parameters() class instance
@@ -28,17 +28,16 @@ class Encoder():
                             "enc_embeddings", [self.params.vocab_size, self.params.embed_size],
                             dtype=tf.float32)
                 vect_inputs = tf.nn.embedding_lookup(embedding, self.captions)
-            images_fv = layers.dense(self.images_fv, self.params.embed_size)
             with tf.name_scope(name="encoder0") as scope1:
                 cell_0 = make_rnn_cell(
                     [self.params.encoder_hidden
                      for _ in range(self.params.encoder_rnn_layers)],
                     base_cell=tf.contrib.rnn.LSTMCell)
                 zero_state0 = cell_0.zero_state(
-                    batch_size=tf.shape(images_fv)[0],
+                    batch_size=tf.shape(self.images_fv)[0],
                     dtype=tf.float32)
                 # run this cell to get initial state
-                _, initial_state0 = cell_0(images_fv, zero_state0)
+                _, initial_state0 = cell_0(self.images_fv, zero_state0)
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
                                                          sequence_length=self.lengths,
@@ -55,5 +54,6 @@ class Encoder():
                                      units=self.params.latent_size,
                                      activation=None)
             # define latent variable`s Stochastic Tensor
-            z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1)
+            z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
+                          n_samples=self.params.gen_z_samples)
         return z
