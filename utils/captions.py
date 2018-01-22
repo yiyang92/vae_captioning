@@ -16,6 +16,8 @@ class Captions():
         self._load_captions_from_file()
         # maintain separate dictionary with indexed captions, look at memory usage
         self.captions_indexed = self.captions.copy()
+        self.num_captions = len(self.captions)
+        print("Number of images in set", self.num_captions)
 
     def _load_captions_from_file(self):
         with open(self._cap_json) as rf:

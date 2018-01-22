@@ -25,7 +25,8 @@ class Encoder():
             # encoder and decoder have different embeddings but the same image features
             with tf.device("/cpu:0"):
                 embedding = tf.get_variable(
-                            "enc_embeddings", [self.params.vocab_size, self.params.embed_size],
+                            "enc_embeddings", [self.params.vocab_size,
+                                               self.params.embed_size],
                             dtype=tf.float32)
                 vect_inputs = tf.nn.embedding_lookup(embedding, self.captions)
             with tf.name_scope(name="encoder0") as scope1:

@@ -28,10 +28,12 @@ class Data():
         self.captions_val.index_captions(self.dictionary.word2idx)
         self.train_feature_dict = None
         self.ex_features_model = None
+        self.num_examples = self.captions_tr.num_captions
         if extract_features:
             assert ex_features_model != None, "Specify tf.contrib.keras model"
             # prepare image features or load them from pickle file
-            self.train_feature_dict = self.extract_features(self.train_dir, ex_features_model)
+            self.train_feature_dict = self.extract_features(self.train_dir,
+                                                            ex_features_model)
             self.ex_features_model = ex_features_model
 
     def load_train_data_generator(self, batch_size):
@@ -49,7 +51,8 @@ class Data():
                                               feature_dict=feature_dict)
         return self.train_batch_gen
 
-    def extract_features(self, data_dir, model=None, save_pickle=True, im_shape=(224, 224)):
+    def extract_features(self, data_dir, model=None, save_pickle=True,
+                         im_shape=(224, 224)):
         """
         Args:
             data_dir: image data directory
@@ -89,7 +92,8 @@ class Data():
         Get validation data, used Batch_Generator() without specifying batch
         size parameter (meaning will generate all data at once) for convenience.
         """
-        valid_feature_dict = self.extract_features(self.valid_dir, self.ex_features_model)
+        valid_feature_dict = self.extract_features(self.valid_dir,
+                                                   self.ex_features_model)
         self.valid_batch_gen = Batch_Generator(self.valid_dir,
                                               self.valid_cap_json,
                                               self.captions_val,
@@ -106,8 +110,10 @@ class Data():
         Returns:
             Test batch generator
         """
-        test_feature_dict = self.extract_features(self.test_dir, self.ex_features_model)
-        self.train_batch_gen = Batch_Generator(self.test_dir, train_cap_json=self.test_cap_json,
+        test_feature_dict = self.extract_features(self.test_dir,
+                                                  self.ex_features_model)
+        self.train_batch_gen = Batch_Generator(self.test_dir,
+                                               train_cap_json=self.test_cap_json,
                                                batch_size=test_batch_size,
                                                feature_dict=test_feature_dict,
                                                get_image_ids=True, get_test_ids=True)

@@ -87,11 +87,22 @@ def main(params):
     # we need to maximize lower_bound
     gradients = tf.gradients(lower_bound, tf.trainable_variables())
     grads_vars = zip(gradients, tf.trainable_variables())
-    learning_rate = tf.placeholder(tf.float32)
-    # optimize = tf.train.GradientDescentOptimizer(
-        # learning_rate).apply_gradients(grads_vars)
-    optimize = tf.train.AdamOptimizer(
-        params.learning_rate).apply_gradients(grads_vars)
+    # learning rate decay
+    learning_rate = tf.constant(params.learning_rate)
+    global_step = tf.placeholder(tf.int32)
+    num_batches_per_epoch = data.num_examples // params.batch_size
+    decay_steps = num_batches_per_epoch * params.num_epochs_per_decay
+    learning_rate_decay = tf.train.exponential_decay(learning_rate,
+                                               global_step,
+                                               decay_steps=decay_steps,
+                                               decay_rate=0.5,
+                                               staircase=True)
+    if params.optimizer == 'SGD':
+        optimize = tf.train.GradientDescentOptimizer(
+            learning_rate_decay).apply_gradients(grads_vars)
+    elif params.optimizer == 'Adam':
+        optimize = tf.train.AdamOptimizer(
+            params.learning_rate).apply_gradients(grads_vars)
     # model restore
     saver = tf.train.Saver()
     config = tf.ConfigProto()
@@ -114,7 +125,8 @@ def main(params):
                         ann_inputs_dec: tr_captions_batch[0],
                         ann_lengths: tr_cl_batch,
                         anneal: cur_t,
-                        learning_rate: params.learning_rate}
+                        learning_rate: params.learning_rate,
+                        global_step: cur_t}
                 # debuging print
                 if cur_t == 0:
                     _ = sess.run(prnt1, feed_dict=feed)

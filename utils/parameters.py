@@ -3,7 +3,7 @@ class Parameters():
     latent_size = 150
     num_epochs = 20
     learning_rate = 0.001
-    batch_size = 128
+    batch_size = 30
     # for decoding
     temperature = 1.0
     #gen_length = 20
@@ -26,6 +26,7 @@ class Parameters():
     gen_z_samples = 20 # according to paper (Diverse cap)
     ann_param = 1
     dec_lstm_drop = 1.0
+    optimizer = 'SGD'
     # restore?
     restore = False
     # technical parameters
@@ -35,6 +36,7 @@ class Parameters():
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
     gen_name = "00"
     checkpoint = "last_run"
+    num_epochs_per_decay = 8
     def parse_args(self):
         import argparse
         import os
@@ -78,6 +80,8 @@ class Parameters():
                             help="'greedy', 'sample', 'beam_search'")
         parser.add_argument('--checkpoint', default=self.checkpoint,
                             help="specify checkpoint name, default=last_run")
+        parser.add_argument('--optimizer', default=self.optimizer,
+                            choices=['SGD', 'Adam'], help="SGD or Adam")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -97,6 +101,7 @@ class Parameters():
         self.dec_lstm_drop = float(args.dec_lstm_drop)
         self.sample_gen = args.sample_gen
         self.checkpoint = args.checkpoint
+        self.optimizer = args.optimizer
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
