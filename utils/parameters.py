@@ -36,7 +36,8 @@ class Parameters():
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
     gen_name = "00"
     checkpoint = "last_run"
-    num_epochs_per_decay = 8
+    num_epochs_per_decay = 5
+    cluster_vectors = False
     def parse_args(self):
         import argparse
         import os
@@ -82,6 +83,9 @@ class Parameters():
                             help="specify checkpoint name, default=last_run")
         parser.add_argument('--optimizer', default=self.optimizer,
                             choices=['SGD', 'Adam'], help="SGD or Adam")
+        # parser.add_argument('--c_v', default=False,
+        #                     help="Whether to use cluster vectors",
+        #                     action="store_true")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -102,6 +106,7 @@ class Parameters():
         self.sample_gen = args.sample_gen
         self.checkpoint = args.checkpoint
         self.optimizer = args.optimizer
+        # self.cluster_vectors = args.c_v
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

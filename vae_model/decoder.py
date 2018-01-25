@@ -24,6 +24,8 @@ class Decoder():
         self.lengths = lengths
         self.params = params
         self.data_dict = data_dict
+        # c_i - optional cluster_vectors, can be specified separately
+        self.c_i = None
 
     def px_z_fi(self, observed, gen_mode = False):
         """
@@ -62,9 +64,11 @@ class Decoder():
                     dtype=tf.float32)
                 # run this cell to get initial state
                 _, initial_state0 = cell_0(self.images_fv, zero_state0)
+                if self.c_i != None:
+                    _, initial_state0 = cell_0(self.c_i, initial_state0)
                 if self.params.no_encoder:
                     if not gen_mode:
-                        print("Not using z")
+                        print("Not using q(z|x)")
                     initial_state = rnn_placeholders(initial_state0)
                 else:
                     # vector z, mapped into embed_dim

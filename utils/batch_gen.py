@@ -12,7 +12,9 @@ class Batch_Generator():
     def __init__(self, train_dir, train_cap_json=None,
                  captions=None, batch_size=None,
                  im_shape=(299, 299), feature_dict=None,
-                 get_image_ids=False, get_test_ids=False):
+                 get_image_ids=False, get_test_ids=False,
+                 repartiton=False, val_cap_instance=None,
+                 val_feature_dict=None):
         """
         Args:
             train_dir: coco training images directory path
@@ -22,10 +24,26 @@ class Batch_Generator():
             im_shape: desirable image shapes
             feature_dict: if given, use feauture vectors instead of images in generator
             get_image_ids: whether or not return image_id list (used for test/val)
+            repartiton: if True, add some images from val set for training
+        (will be 118287(appr.) images for training)
+            val_cap_instance: (optional), if use val_set images
+            val_feature_dict: (optional), if use val_set images
         """
         self._batch_size = batch_size
-        # TODO:  glob can be replaced with os.listdir and can be randomized
-        self._iterable = glob(train_dir + '*.jpg')
+        # TODO: add more training images from val_set
+        self._iterable = list(glob(train_dir + '*.jpg'))
+        if repartiton:
+            # assume that validation data stored in coco folder
+            val_set_path = '/'.join(train_dir.split('/')[:-2] + ['val2014/'])
+            val_list = list(glob(val_set_path + '*.jpg'))
+            shuffle(val_list)
+            # choose 4000 images for validation
+            self._iterable.extend(val_list[:-4000])
+            print("train + val set size: ", len(self._iterable))
+            if not val_feature_dict:
+                raise ValueError("If use validation set images for "
+                                 "training need to specify val_feature_dict")
+            self.val_feature_dict = val_feature_dict
         if not batch_size:
             print("use all data")
             self._batch_size = len(self._iterable)
@@ -40,6 +58,12 @@ class Batch_Generator():
         if captions:
             self.cap_instance = captions
             self.captions = self.cap_instance.captions_indexed
+            if repartiton:
+                if not val_cap_instance:
+                    raise ValueError("If use validation set images for "
+                                     "training need to specify val_cap instance")
+                self.val_cap_instance = val_cap_instance
+                self.val_captions = self.val_cap_instance.captions_indexed
         # seed for reproducibility
         self.random_seed = 42
         np.random.seed(self.random_seed)
@@ -50,7 +74,6 @@ class Batch_Generator():
 
     def next_batch(self, get_image_ids = False):
         self.get_image_ids = get_image_ids
-        self._iterable = list(self._iterable)
         # shuffle
         shuffle(self._iterable)
         imn_batch  = [None] * self._batch_size
@@ -59,7 +82,13 @@ class Batch_Generator():
             imn_batch[inx] = item
             if inx == self._batch_size - 1:
                 if self.feature_dict:
-                    images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
+                    images = []
+                    for imn in imn_batch:
+                        try:
+                            image = self.feature_dict[imn.split('/')[-1]]
+                        except:
+                            image = self.val_feature_dict[imn.split('/')[-1]]
+                        images.append(image)
                     # squeeze [batch_size, 1, 4096]
                     images = np.squeeze(np.array(images), 1)
                 else:
@@ -69,7 +98,12 @@ class Batch_Generator():
                 if self.get_image_ids:
                     image_ids = []
                     for fn in imn_batch:
-                        id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                        try:
+                            id_ = self.cap_instance.filename_to_imid[
+                                fn.split('/')[-1]]
+                        except:
+                            id_ = self.val_cap_instance.filename_to_imid[
+                                fn.split('/')[-1]]
                         image_ids.append(id_)
                     yield images, (inp_captions, l_captions), lengths, image_ids
                 else:
@@ -78,7 +112,13 @@ class Batch_Generator():
         if imn_batch[0]:
             imn_batch = [item for item in imn_batch if item]
             if self.feature_dict:
-                images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
+                images = []
+                for imn in imn_batch:
+                    try:
+                        image = self.feature_dict[imn.split('/')[-1]]
+                    except:
+                        image = self.val_feature_dict[imn.split('/')[-1]]
+                    images.append(image)
                 images = np.squeeze(np.array(images), 1)
             else:
                 images = self._get_images(imn_batch)
@@ -86,7 +126,12 @@ class Batch_Generator():
             if self.get_image_ids:
                 image_ids = []
                 for fn in imn_batch:
-                    id_ = self.cap_instance.filename_to_imid[fn.split('/')[-1]]
+                    try:
+                        id_ = self.cap_instance.filename_to_imid[
+                            fn.split('/')[-1]]
+                    except:
+                        id_ = self.val_cap_instance.filename_to_imid[
+                            fn.split('/')[-1]]
                     image_ids.append(id_)
                 yield images, (inp_captions, l_captions), lengths, image_ids
             else:
@@ -100,7 +145,7 @@ class Batch_Generator():
                 raise
         return {img['file_name']:img['id'] for img in j['images']}
 
-    def next_train_batch(self):
+    def next_test_batch(self):
         imn_batch  = [None] * self._batch_size
         for i, item in enumerate(self._iterable):
             inx = i % self._batch_size
@@ -143,10 +188,8 @@ class Batch_Generator():
         """
         Args:
             image: numpy array contained image
-            size: tuple, desired shape
         """
         # first crop the image and resize it
-        # TODO: normalization
         crop = min(image.shape[0], image.shape[1])
         h_start = image.shape[0] // 2 - crop // 2
         w_start = image.shape[1] // 2 - crop // 2
@@ -173,7 +216,13 @@ class Batch_Generator():
         for fn in imn_batch:
             # TODO: improve error handling when file is not correct
             fn = fn.split('/')[-1]
-            caption = self.captions[fn][np.random.randint(len(self.captions[fn]))]
+            try:
+                caption = self.captions[fn][np.random.randint(
+                    len(self.captions[fn]))]
+            except:
+                # validation captions, maybe find better way to process?
+                caption = self.val_captions[fn][np.random.randint(
+                    len(self.val_captions[fn]))]
             # split into labels/inputs (encoder/decoder inputs)
             input_captions_list[idx] = caption[:-1] # <BOS>...
             labels_captions_list[idx] = caption[1:] # ...<EOS>

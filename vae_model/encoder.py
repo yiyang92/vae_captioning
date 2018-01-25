@@ -16,6 +16,9 @@ class Encoder():
         self.captions = captions
         self.lengths = lengths
         self.params = params
+        # c_i - optional cluster_vectors, can be specified separately
+        self.c_i = None
+
     def q_net(self):
         """Calculate approximate posterior q(z|x, f(I))
         Returns:
@@ -39,6 +42,8 @@ class Encoder():
                     dtype=tf.float32)
                 # run this cell to get initial state
                 _, initial_state0 = cell_0(self.images_fv, zero_state0)
+                if self.c_i != None:
+                    _, initial_state0 = cell_0(self.c_i, initial_state0)
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
                                                          sequence_length=self.lengths,

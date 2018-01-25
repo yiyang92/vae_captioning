@@ -10,7 +10,8 @@ from utils.batch_gen import Batch_Generator
 from utils.captions import Captions, Dictionary
 
 class Data():
-    def __init__(self, coco_path, extract_features=False, ex_features_model=None):
+    def __init__(self, coco_path, extract_features=False,
+                 ex_features_model=None, repartiton=False):
         # captions
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
         self.valid_cap_json = coco_path + "annotations/captions_val2014.json"
@@ -29,6 +30,7 @@ class Data():
         self.train_feature_dict = None
         self.ex_features_model = None
         self.num_examples = self.captions_tr.num_captions
+        self.repartiton = repartiton
         if extract_features:
             assert ex_features_model != None, "Specify tf.contrib.keras model"
             # prepare image features or load them from pickle file
@@ -41,14 +43,23 @@ class Data():
         Args:
             batch_size: batch size
             pre_extr_features_model: keras VGG16 model, ex.:
-        model = tf.contrib.keras.applications.VGG16(weights='imagenet', include_top=False)
+        model = tf.contrib.keras.applications.VGG16(weights='imagenet',
+        include_top=False)
         """
         feature_dict = self.train_feature_dict
+        val_cap, valid_feature_dict = None, None
+        if self.repartiton:
+            val_cap = self.captions_val
+            valid_feature_dict = self.extract_features(self.valid_dir,
+                                                   self.ex_features_model)
         self.train_batch_gen = Batch_Generator(self.train_dir,
                                               self.train_cap_json,
                                               self.captions_tr,
                                               batch_size,
-                                              feature_dict=feature_dict)
+                                              feature_dict=feature_dict,
+                                              repartiton=self.repartiton,
+                                              val_cap_instance=val_cap,
+                                              val_feature_dict=valid_feature_dict)
         return self.train_batch_gen
 
     def extract_features(self, data_dir, model=None, save_pickle=True,
@@ -57,7 +68,8 @@ class Data():
         Args:
             data_dir: image data directory
             model: tf.contrib.keras model, CNN, used for feature extraction
-            save_pickle: bool, will serialize feature_dict and save it into ./pickle directory
+            save_pickle: bool, will serialize feature_dict and save it into
+        ./pickle directory
             im_shape: desired images shape
         Returns:
             feature_dict: dictionary of the form {image_name: feature_vector}
@@ -67,7 +79,8 @@ class Data():
         if not os.path.exists("./pickles"):
             os.makedirs("./pickles")
         try:
-            with open("./pickles/" + data_dir.split('/')[-2] + '.pickle', 'rb') as rf:
+            with open(
+                "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'rb') as rf:
                 print("Loading prepared feature vector from {}".format(
                     "./pickles/" + data_dir.split('/')[-2] + '.pickle'))
                 feature_dict = pickle.load(rf)
@@ -83,7 +96,8 @@ class Data():
                 # ex. COCO_val2014_0000000XXXXX.jpg
                 feature_dict[img_path.split('/')[-1]] = features
             if save_pickle:
-                with open("./pickles/" + data_dir.split('/')[-2] + '.pickle', 'wb') as wf:
+                with open(
+                    "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'wb') as wf:
                     pickle.dump(feature_dict, wf)
         return feature_dict
 

@@ -19,12 +19,11 @@ print("Tensorflow version: ", tf.__version__)
 
 def main(params):
     # load data, class data contains captions, images, image features (if avaliable)
-    # TODO: check feature extraction
     base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
                                                      include_top=True)
     model = tf.contrib.keras.models.Model(inputs=base_model.input,
                                           outputs=base_model.get_layer('fc2').output)
-    data = Data(coco_dir, True, model)
+    data = Data(coco_dir, True, model, repartiton=True)
     val_gen = data.get_valid_data(500)
     test_gen = data.get_test_data(500)
     # load batch generator
@@ -51,6 +50,17 @@ def main(params):
     # decoder, input_fv, get x, x_logits (for generation)
     decoder = Decoder(images_fv, ann_inputs_dec, ann_lengths, params,
                       cap_dict)
+    if params.cluster_vectors:
+        # cluster vectors from "Diverse and Accurate Image Description.." paper.
+        # 80 is number of classes, for now hardcoded
+        # for GMM-CVAE must be specified
+        # TODO: need to fine tune VGG16 for MSCOCO dataset
+        # TODO: first: extract classes from images, next write function, feed
+        c_i = tf.placeholder(tf.float32)
+        c_i_emb = layers.dense(c_i, self.params.embed_size)
+        # map cluster vectors into embedding space
+        decoder.c_i = c_i_emb
+        encoder.c_i = c_i_emb
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})
@@ -113,7 +123,6 @@ def main(params):
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
         if params.restore:
-            # TODO: add checkpoint naming
             print("Restoring from checkpoint")
             saver.restore(sess, "./checkpoints/{}.ckpt".format(
                 params.checkpoint))
@@ -181,7 +190,7 @@ def main(params):
         # test set
         captions_gen = []
         print("Generating captions for test file")
-        for f_images_batch, image_ids in test_gen.next_train_batch():
+        for f_images_batch, image_ids in test_gen.next_test_batch():
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
                                                image_f_inputs)
             captions_gen += sent
