@@ -50,17 +50,17 @@ def main(params):
     # decoder, input_fv, get x, x_logits (for generation)
     decoder = Decoder(images_fv, ann_inputs_dec, ann_lengths, params,
                       cap_dict)
-    if params.cluster_vectors:
+    if params.use_c_v:
         # cluster vectors from "Diverse and Accurate Image Description.." paper.
         # 80 is number of classes, for now hardcoded
         # for GMM-CVAE must be specified
-        # TODO: need to fine tune VGG16 for MSCOCO dataset
-        # TODO: first: extract classes from images, next write function, feed
-        c_i = tf.placeholder(tf.float32)
-        c_i_emb = layers.dense(c_i, self.params.embed_size)
+        c_i = tf.placeholder(tf.float32, [None, 90])
+        c_i_emb = layers.dense(c_i, params.embed_size)
         # map cluster vectors into embedding space
         decoder.c_i = c_i_emb
-        encoder.c_i = c_i_emb
+        decoder.c_i_ph = c_i
+        if not params.no_encoder:
+            encoder.c_i = c_i_emb
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})
@@ -128,14 +128,17 @@ def main(params):
                 params.checkpoint))
         cur_t = 0
         for e in range(params.num_epochs):
-            for tr_f_images_batch, tr_captions_batch, tr_cl_batch in batch_gen.next_batch():
-                feed = {image_f_inputs: tr_f_images_batch,
-                        ann_inputs_enc: tr_captions_batch[1],
-                        ann_inputs_dec: tr_captions_batch[0],
-                        ann_lengths: tr_cl_batch,
+            for f_images_batch, captions_batch, cl_batch, c_v in batch_gen.next_batch(
+                use_obj_vectors=params.use_c_v):
+                feed = {image_f_inputs: f_images_batch,
+                        ann_inputs_enc: captions_batch[1],
+                        ann_inputs_dec: captions_batch[0],
+                        ann_lengths: cl_batch,
                         anneal: cur_t,
                         learning_rate: params.learning_rate,
                         global_step: cur_t}
+                if params.use_c_v:
+                    feed.update({c_i: c_v[:, 1:]})
                 # debuging print
                 if cur_t == 0:
                     _ = sess.run(prnt1, feed_dict=feed)
@@ -150,12 +153,15 @@ def main(params):
                                                                         ))
             print("Annealing coefficient: {} KLD: {}".format(ann, kl))
             val_vlb, val_rec = [], []
-            for f_images_batch, captions_batch, cl_batch in val_gen.next_batch():
+            for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
+                use_obj_vectors=params.use_c_v):
                 feed = {image_f_inputs: f_images_batch,
                         ann_inputs_enc: captions_batch[1],
                         ann_inputs_dec: captions_batch[0],
                         ann_lengths: cl_batch,
                         anneal: cur_t}
+                if params.use_c_v:
+                    feed.update({c_i: c_v[:, 1:]})
                 kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
                                       feed_dict=feed)
                 val_vlb.append(lb)
@@ -176,9 +182,10 @@ def main(params):
         captions_gen = []
         print("Generating captions for val file")
         acc, caps = [], []
-        for f_images_batch, _, _, image_ids in val_gen.next_batch(get_image_ids=True):
+        for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
+            get_image_ids=True, use_obj_vectors=params.use_c_v):
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs)
+                                               image_f_inputs, c_v=c_v)
             captions_gen += sent
         val_gen_file = "./val_{}.json".format(params.gen_name)
         if os.path.exists(val_gen_file):

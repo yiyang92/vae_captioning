@@ -26,6 +26,7 @@ class Decoder():
         self.data_dict = data_dict
         # c_i - optional cluster_vectors, can be specified separately
         self.c_i = None
+        self.c_i_ph = None
 
     def px_z_fi(self, observed, gen_mode = False):
         """
@@ -110,7 +111,7 @@ class Decoder():
         return model, x_logits, shpe, (initial_state, final_state, sample)
 
     def online_inference(self, sess, picture_ids, in_pictures, image_f_inputs,
-                         to_json=False, stop_word='<EOS>'):
+                         to_json=False, stop_word='<EOS>', c_v=None):
         """Generate caption, given batch of pictures and their ids (names).
         Args:
             sess: tf.Session() object
@@ -141,6 +142,8 @@ class Decoder():
                 feed = {self.captions: np.array(input_seq)[-1].reshape([1, 1]),
                         self.lengths: [1],
                         image_f_inputs: np.expand_dims(in_pictures[i], 0)}
+                if self.c_i:
+                    feed.update({self.c_i_ph: c_v[i]})
                 # for the first decoder step, the state is None
                 if state is not None:
                      feed.update({init_state: state})

@@ -51,8 +51,12 @@ def make_rnn_cell(rnn_layer_sizes,
       return cell
 
 def weight_bias(W_shape, b_shape, bias_init=0.1):
-    W = tf.get_variable(name='weight1', shape=W_shape, dtype=tf.float32, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    b = tf.get_variable(name='bias1', shape=b_shape, dtype=tf.float32, initializer=tf.constant_initializer(0.1))
+    W = tf.get_variable(name='weight1',
+                        shape=W_shape, dtype=tf.float32,
+                        initializer=tf.truncated_normal_initializer(stddev=0.1))
+    b = tf.get_variable(name='bias1',
+                        shape=b_shape, dtype=tf.float32,
+                        initializer=tf.constant_initializer(0.1))
     return W, b
 
 def highway_network(x, size, carry_bias=-1.0, scope='enc'):

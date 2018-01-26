@@ -3,7 +3,7 @@ class Parameters():
     latent_size = 150
     num_epochs = 20
     learning_rate = 0.001
-    batch_size = 30
+    batch_size = 128 # for no encoder use bs=30
     # for decoding
     temperature = 1.0
     #gen_length = 20
@@ -24,7 +24,7 @@ class Parameters():
     embed_size = 353
     gen_max_len = 300
     gen_z_samples = 20 # according to paper (Diverse cap)
-    ann_param = 1
+    ann_param = 5
     dec_lstm_drop = 1.0
     optimizer = 'SGD'
     # restore?
@@ -37,11 +37,11 @@ class Parameters():
     gen_name = "00"
     checkpoint = "last_run"
     num_epochs_per_decay = 5
-    cluster_vectors = False
+    use_c_v = False
     def parse_args(self):
         import argparse
         import os
-        parser = argparse.ArgumentParser(description="Specify some parameters, "
+        parser = argparse.ArgumentParser(description="Specify training parameters, "
                                          "all parameters also can be "
                                          "directly specify in the "
                                          "Parameters class")
@@ -62,6 +62,8 @@ class Parameters():
                             help="mscoco directory")
         parser.add_argument('--epochs', default=self.num_epochs,
                             help="number of training epochs")
+        parser.add_argument('--bs', default=self.batch_size,
+                            help="Batch size")
         parser.add_argument('--no_encoder',
                             help="use this if want to run baseline lstm",
                             action="store_true")
@@ -83,9 +85,9 @@ class Parameters():
                             help="specify checkpoint name, default=last_run")
         parser.add_argument('--optimizer', default=self.optimizer,
                             choices=['SGD', 'Adam'], help="SGD or Adam")
-        # parser.add_argument('--c_v', default=False,
-        #                     help="Whether to use cluster vectors",
-        #                     action="store_true")
+        parser.add_argument('--c_v', default=False,
+                            help="Whether to use cluster vectors",
+                            action="store_true")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -106,7 +108,8 @@ class Parameters():
         self.sample_gen = args.sample_gen
         self.checkpoint = args.checkpoint
         self.optimizer = args.optimizer
-        # self.cluster_vectors = args.c_v
+        self.use_c_v = args.c_v
+        self.batch_size = int(args.bs)
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
