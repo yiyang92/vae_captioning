@@ -18,6 +18,7 @@ class Parameters():
     encoder_hidden = 191
     keep_rate = 1.0
     # decoder
+    std = 0.1 # decodertest time N(0, std)
     decoder_hidden = 191
     decoder_rnn_layers = 1
     dec_keep_rate = 1.0

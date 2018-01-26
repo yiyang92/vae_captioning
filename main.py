@@ -1,9 +1,3 @@
-from utils.data import Data
-from utils.rnn_model import make_rnn_cell, rnn_placeholders
-from utils.parameters import Parameters
-from vae_model.decoder import Decoder
-from vae_model.encoder import Encoder
-
 import os
 import json
 import numpy as np
@@ -11,6 +5,13 @@ import tensorflow as tf
 import zhusuan as zs
 from tensorflow import layers
 from tensorflow.python.util.nest import flatten
+
+from utils.data import Data
+from utils.rnn_model import make_rnn_cell, rnn_placeholders
+from utils.parameters import Parameters
+from vae_model.decoder import Decoder
+from vae_model.encoder import Encoder
+
 # import utils
 print("Tensorflow version: ", tf.__version__)
 
@@ -185,7 +186,7 @@ def main(params):
         for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
             get_image_ids=True, use_obj_vectors=params.use_c_v):
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs, c_v=c_v)
+                                               image_f_inputs, c_v=c_v[:, 1:])
             captions_gen += sent
         val_gen_file = "./val_{}.json".format(params.gen_name)
         if os.path.exists(val_gen_file):

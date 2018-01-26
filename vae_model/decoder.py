@@ -38,8 +38,7 @@ class Decoder():
         with zs.BayesianNet(observed) as model:
             z_mean = tf.zeros([tf.shape(self.images_fv)[0],
                                self.params.latent_size])
-            # TODO: add std as a parameter
-            z = zs.Normal('z', mean=z_mean, std=0.1,
+            z = zs.Normal('z', mean=z_mean, std=self.params.std,
                           group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
             # encoder and decoder have different embeddings but the same image features
@@ -142,8 +141,8 @@ class Decoder():
                 feed = {self.captions: np.array(input_seq)[-1].reshape([1, 1]),
                         self.lengths: [1],
                         image_f_inputs: np.expand_dims(in_pictures[i], 0)}
-                if self.c_i:
-                    feed.update({self.c_i_ph: c_v[i]})
+                if self.c_i != None:
+                    feed.update({self.c_i_ph: np.expand_dims(c_v[i], 0)})
                 # for the first decoder step, the state is None
                 if state is not None:
                      feed.update({init_state: state})
