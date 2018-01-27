@@ -183,11 +183,21 @@ def main(params):
         captions_gen = []
         print("Generating captions for val file")
         acc, caps = [], []
+        GEN_CAP_NUM = 4000
+        ctr = 0
         for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
             get_image_ids=True, use_obj_vectors=params.use_c_v):
+            if params.use_c_v:
+                # 0 element doesnt matter
+                c_v = c_v[:, 1:]
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs, c_v=c_v[:, 1:])
+                                               image_f_inputs, c_v=c_v)
             captions_gen += sent
+            if ctr >= GEN_CAP_NUM:
+                print("Generated {} captions".format(GEN_CAP_NUM))
+                break
+            ctr += len(captions_gen)
+            print(ctr)
         val_gen_file = "./val_{}.json".format(params.gen_name)
         if os.path.exists(val_gen_file):
             print("Exists ", val_gen_file)
@@ -198,9 +208,12 @@ def main(params):
         # test set
         captions_gen = []
         print("Generating captions for test file")
-        for f_images_batch, image_ids in test_gen.next_test_batch():
+        for f_images_batch, image_ids, c_v in test_gen.next_test_batch(
+            params.use_c_v):
+            if params.use_c_v:
+                c_v = c_v[:, 1:]
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs)
+                                               image_f_inputs, c_v=c_v[:, 1:])
             captions_gen += sent
         test_gen_file = "./test_{}.json".format(params.gen_name)
         if os.path.exists(test_gen_file):

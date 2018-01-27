@@ -25,7 +25,7 @@ class Parameters():
     embed_size = 353
     gen_max_len = 300
     gen_z_samples = 20 # according to paper (Diverse cap)
-    ann_param = 5
+    ann_param = 5 # KL-divergence component weight in objective function
     dec_lstm_drop = 1.0
     optimizer = 'SGD'
     # restore?
@@ -89,6 +89,8 @@ class Parameters():
         parser.add_argument('--c_v', default=False,
                             help="Whether to use cluster vectors",
                             action="store_true")
+        parser.add_argument('--std', default=self.std,
+                            help="z~N(0, std), during the test time")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -111,6 +113,7 @@ class Parameters():
         self.optimizer = args.optimizer
         self.use_c_v = args.c_v
         self.batch_size = int(args.bs)
+        self.std = float(args.std)
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

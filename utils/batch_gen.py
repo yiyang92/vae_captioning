@@ -73,6 +73,50 @@ class Batch_Generator():
         self.feature_dict = feature_dict
         self.get_image_ids = get_image_ids
 
+    def _images_c_v(self, imn_batch, c_v):
+        """Internal method, returns [batch_size, I] and [batch_size, c(I)]
+        """
+        if self.feature_dict:
+            images = []
+            cl_v = []
+            for imn in imn_batch:
+                try:
+                    image = self.feature_dict[imn.split('/')[-1]]
+                except:
+                    image = self.val_feature_dict[imn.split('/')[-1]]
+                if c_v:
+                    # TODO: avoid this by better preprocessing
+                    try:
+                        vector = c_v[imn.split('/')[-1]]
+                    except:
+                        vector = np.zeros(91)
+                    cl_v.append(vector)
+                images.append(image)
+            cl_v = np.array(cl_v)
+            images = np.squeeze(np.array(images), 1)
+        else:
+            images = self._get_images(imn_batch)
+        return images, cl_v
+
+    def _get_imid(self, imn_batch, test=False):
+        """Internal method, get image ids using Caption object dict
+        """
+        image_ids = []
+        for fn in imn_batch:
+            if not test:
+                try:
+                    id_ = self.cap_instance.filename_to_imid[
+                        fn.split('/')[-1]]
+                except:
+                    id_ = self.val_cap_instance.filename_to_imid[
+                        fn.split('/')[-1]]
+                image_ids.append(id_)
+            else:
+                for fn in imn_batch:
+                    id_ = self._fn_to_id[fn.split('/')[-1]]
+                    image_ids.append(id_)
+        return image_ids
+
     def next_batch(self, get_image_ids = False, use_obj_vectors=False):
         self.get_image_ids = get_image_ids
         # separately specify whether to use cluster obj_vectors
@@ -88,40 +132,12 @@ class Batch_Generator():
             inx = i % self._batch_size
             imn_batch[inx] = item
             if inx == self._batch_size - 1:
-                if self.feature_dict:
-                    images = []
-                    cl_v = []
-                    for imn in imn_batch:
-                        try:
-                            image = self.feature_dict[imn.split('/')[-1]]
-                        except:
-                            image = self.val_feature_dict[imn.split('/')[-1]]
-                        images.append(image)
-                        if c_v:
-                            # TODO: avoid this by better preprocessing
-                            try:
-                                vector = c_v[imn.split('/')[-1]]
-                            except:
-                                vector = np.zeros(91)
-                            cl_v.append(vector)
-                    # squeeze [batch_size, 1, 4096]
-                    cl_v = np.array(cl_v)
-                    images = np.squeeze(np.array(images), 1)
-                else:
-                    images = self._get_images(imn_batch)
+                images, cl_v = self._images_c_v(imn_batch, c_v)
                 # concatenate to obtain [images, caption_indices, lengths]
                 inp_captions, l_captions, lengths = self._form_captions_batch(
                     imn_batch)
                 if self.get_image_ids:
-                    image_ids = []
-                    for fn in imn_batch:
-                        try:
-                            id_ = self.cap_instance.filename_to_imid[
-                                fn.split('/')[-1]]
-                        except:
-                            id_ = self.val_cap_instance.filename_to_imid[
-                                fn.split('/')[-1]]
-                        image_ids.append(id_)
+                    image_ids = self._get_imid(imn_batch)
                     yield images, (inp_captions,
                                    l_captions), lengths, image_ids, cl_v
                 else:
@@ -130,38 +146,11 @@ class Batch_Generator():
         if imn_batch[0]:
             # TODO: avoid this repeat by defining function
             imn_batch = [item for item in imn_batch if item]
-            if self.feature_dict:
-                images = []
-                cl_v = []
-                for imn in imn_batch:
-                    try:
-                        image = self.feature_dict[imn.split('/')[-1]]
-                    except:
-                        image = self.val_feature_dict[imn.split('/')[-1]]
-                    if c_v:
-                        # TODO: avoid this by better preprocessing
-                        try:
-                            vector = c_v[imn.split('/')[-1]]
-                        except:
-                            vector = np.zeros(91)
-                        cl_v.append(vector)
-                    images.append(image)
-                cl_v = np.array(cl_v)
-                images = np.squeeze(np.array(images), 1)
-            else:
-                images = self._get_images(imn_batch)
+            images, cl_v = self._images_c_v(imn_batch, c_v)
             inp_captions, l_captions, lengths = self._form_captions_batch(
                 imn_batch)
             if self.get_image_ids:
-                image_ids = []
-                for fn in imn_batch:
-                    try:
-                        id_ = self.cap_instance.filename_to_imid[
-                            fn.split('/')[-1]]
-                    except:
-                        id_ = self.val_cap_instance.filename_to_imid[
-                            fn.split('/')[-1]]
-                    image_ids.append(id_)
+                image_ids = self._get_imid(imn_batch)
                 yield images, (inp_captions,
                                l_captions), lengths, image_ids, cl_v
             else:
@@ -175,35 +164,26 @@ class Batch_Generator():
                 raise
         return {img['file_name']:img['id'] for img in j['images']}
 
-    def next_test_batch(self):
+    def next_test_batch(self, use_obj_vectors=False):
         imn_batch  = [None] * self._batch_size
+        self.use_obj_vectors = use_obj_vectors
+        if self.use_obj_vectors:
+            c_v = self._get_cluster_vectors(True)
+        else:
+            c_v = None
         for i, item in enumerate(self._iterable):
             inx = i % self._batch_size
             imn_batch[inx] = item
             if inx == self._batch_size - 1:
-                if self.feature_dict:
-                    images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
-                    images = np.squeeze(np.array(images), 1)
-                else:
-                    images = self._get_images(imn_batch)
-                image_ids = []
-                for fn in imn_batch:
-                    id_ = self._fn_to_id[fn.split('/')[-1]]
-                    image_ids.append(id_)
-                yield images, image_ids
+                images, cl_v = self._images_c_v(imn_batch, c_v)
+                image_ids = self._get_imid(imn_batch, True)
+                yield images, image_ids, cl_v
                 imn_batch = [None] * self._batch_size
         if imn_batch[0]:
             imn_batch = [item for item in imn_batch if item]
-            if self.feature_dict:
-                images = [self.feature_dict[imn.split('/')[-1]] for imn in imn_batch]
-                images = np.squeeze(np.array(images), 1)
-            else:
-                images = self._get_images(imn_batch)
-            image_ids = []
-            for fn in imn_batch:
-                id_ = self._fn_to_id[fn.split('/')[-1]]
-                image_ids.append(id_)
-            yield images, image_ids
+            images, cl_v = self._images_c_v(imn_batch, c_v)
+            image_ids = self._get_imid(imn_batch, True)
+            yield images, image_ids, cl_v
 
     def _get_images(self, names):
         images = []
