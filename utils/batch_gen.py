@@ -15,7 +15,7 @@ class Batch_Generator():
                  im_shape=(299, 299), feature_dict=None,
                  get_image_ids=False, get_test_ids=False,
                  repartiton=False, val_cap_instance=None,
-                 val_feature_dict=None):
+                 val_feature_dict=None, val_tr_unused=None):
         """
         Args:
             train_dir: coco training images directory path
@@ -29,17 +29,30 @@ class Batch_Generator():
         (will be 118287(appr.) images for training)
             val_cap_instance: (optional), if use val_set images
             val_feature_dict: (optional), if use val_set images
+            val_tr_unused : (optional), dont use used in training for validation
         """
         self._batch_size = batch_size
-        self._iterable = list(glob(train_dir + '*.jpg'))
+        if val_tr_unused == None:
+            self._iterable = list(glob(train_dir + '*.jpg'))
+        else:
+            self._iterable = val_tr_unused
         self._train_dir = train_dir
         if repartiton:
             # assume that validation data stored in coco folder
             val_set_path = '/'.join(train_dir.split('/')[:-2] + ['val2014/'])
             val_list = list(glob(val_set_path + '*.jpg'))
             shuffle(val_list)
-            # choose 4000 images for validation
-            self._iterable.extend(val_list[:-4000])
+            # choose some images for validation, get images unused in training
+            self.gen_val_cap = None
+            if self.gen_val_cap != None and self.gen_val_cap < 0:
+                self.gen_val_cap = None
+            # get unused captions image names
+            self.unused_cap_in = None
+            if self.gen_val_cap:
+                self._iterable.extend(val_list[:-self.gen_val_cap])
+                self.unused_cap_in = val_list[self.gen_val_cap:]
+            else:
+                self._iterable.extend(val_list)
             print("train + val set size: ", len(self._iterable))
             if not val_feature_dict:
                 raise ValueError("If use validation set images for "

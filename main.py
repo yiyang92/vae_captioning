@@ -25,10 +25,11 @@ def main(params):
     model = tf.contrib.keras.models.Model(inputs=base_model.input,
                                           outputs=base_model.get_layer('fc2').output)
     data = Data(coco_dir, True, model, repartiton=True)
-    val_gen = data.get_valid_data(500)
-    test_gen = data.get_test_data(500)
-    # load batch generator
+    # load batch generator, repartiton to use more val set images in train
     batch_gen = data.load_train_data_generator(params.batch_size)
+    batch_gen.gen_val_cap = params.gen_val_captions # limit used captions in val
+    val_gen = data.get_valid_data(500, val_tr_unused=batch_gen.unused_cap_in)
+    test_gen = data.get_test_data(500)
     # annotations vector of form <EOS>...<BOS><PAD>...
     ann_inputs_enc = tf.placeholder(tf.int32, [None, None])
     ann_inputs_dec = tf.placeholder(tf.int32, [None, None])
@@ -176,15 +177,14 @@ def main(params):
         # save model
         if not os.path.exists("./checkpoints"):
             os.makedirs("./checkpoints")
-        save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
-            params.checkpoint))
-        print("Model saved in file: %s" % save_path)
+        if params.num_epochs > 0:
+            save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
+                params.checkpoint))
+            print("Model saved in file: %s" % save_path)
         # validation set
         captions_gen = []
         print("Generating captions for val file")
         acc, caps = [], []
-        GEN_CAP_NUM = 4000
-        ctr = 0
         for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
             get_image_ids=True, use_obj_vectors=params.use_c_v):
             if params.use_c_v:
@@ -193,11 +193,7 @@ def main(params):
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
                                                image_f_inputs, c_v=c_v)
             captions_gen += sent
-            if ctr >= GEN_CAP_NUM:
-                print("Generated {} captions".format(GEN_CAP_NUM))
-                break
-            ctr += len(captions_gen)
-            print(ctr)
+        print("Generated {} captions".format(len(captions_gen)))
         val_gen_file = "./val_{}.json".format(params.gen_name)
         if os.path.exists(val_gen_file):
             print("Exists ", val_gen_file)
@@ -213,7 +209,7 @@ def main(params):
             if params.use_c_v:
                 c_v = c_v[:, 1:]
             sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs, c_v=c_v[:, 1:])
+                                               image_f_inputs, c_v=c_v)
             captions_gen += sent
         test_gen_file = "./test_{}.json".format(params.gen_name)
         if os.path.exists(test_gen_file):

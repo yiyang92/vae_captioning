@@ -39,6 +39,7 @@ class Parameters():
     checkpoint = "last_run"
     num_epochs_per_decay = 5
     use_c_v = False
+    gen_val_captions = 4000 # set -1 to generate captions on a full dataset
     def parse_args(self):
         import argparse
         import os
