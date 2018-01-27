@@ -24,10 +24,14 @@ def main(params):
                                                      include_top=True)
     model = tf.contrib.keras.models.Model(inputs=base_model.input,
                                           outputs=base_model.get_layer('fc2').output)
-    data = Data(coco_dir, True, model, repartiton=True)
+    if params.gen_val_captions < 0:
+        repartiton = False
+    else:
+        repartiton = True
+    data = Data(coco_dir, True, model, repartiton=repartiton,
+                gen_val_cap=params.gen_val_captions)
     # load batch generator, repartiton to use more val set images in train
     batch_gen = data.load_train_data_generator(params.batch_size)
-    batch_gen.gen_val_cap = params.gen_val_captions # limit used captions in val
     val_gen = data.get_valid_data(500, val_tr_unused=batch_gen.unused_cap_in)
     test_gen = data.get_test_data(500)
     # annotations vector of form <EOS>...<BOS><PAD>...

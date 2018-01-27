@@ -11,7 +11,8 @@ from utils.captions import Captions, Dictionary
 
 class Data():
     def __init__(self, coco_path, extract_features=False,
-                 ex_features_model=None, repartiton=False):
+                 ex_features_model=None, repartiton=False,
+                 gen_val_cap=None):
         # captions
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
         self.valid_cap_json = coco_path + "annotations/captions_val2014.json"
@@ -31,6 +32,10 @@ class Data():
         self.ex_features_model = None
         self.num_examples = self.captions_tr.num_captions
         self.repartiton = repartiton
+        self.gen_val_cap = gen_val_cap
+        if repartiton and not gen_val_cap:
+            raise ValueError("If using repartition must specify how many val "
+                             "images to use")
         if extract_features:
             assert ex_features_model != None, "Specify tf.contrib.keras model"
             # prepare image features or load them from pickle file
@@ -56,10 +61,11 @@ class Data():
                                               self.train_cap_json,
                                               self.captions_tr,
                                               batch_size,
-                                              feature_dict=feature_dict,
-                                              repartiton=self.repartiton,
-                                              val_cap_instance=val_cap,
-                                              val_feature_dict=valid_feature_dict)
+                                              feature_dict=feature_dict)
+        if self.repartiton:
+            self.train_batch_gen.repartiton(val_cap,
+                                            valid_feature_dict,
+                                            self.gen_val_cap)
         return self.train_batch_gen
 
     def extract_features(self, data_dir, model=None, save_pickle=True,

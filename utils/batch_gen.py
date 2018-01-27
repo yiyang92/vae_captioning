@@ -14,8 +14,7 @@ class Batch_Generator():
                  captions=None, batch_size=None,
                  im_shape=(299, 299), feature_dict=None,
                  get_image_ids=False, get_test_ids=False,
-                 repartiton=False, val_cap_instance=None,
-                 val_feature_dict=None, val_tr_unused=None):
+                 val_tr_unused=None):
         """
         Args:
             train_dir: coco training images directory path
@@ -25,39 +24,15 @@ class Batch_Generator():
             im_shape: desirable image shapes
             feature_dict: if given, use feauture vectors instead of images in generator
             get_image_ids: whether or not return image_id list (used for test/val)
-            repartiton: if True, add some images from val set for training
-        (will be 118287(appr.) images for training)
-            val_cap_instance: (optional), if use val_set images
-            val_feature_dict: (optional), if use val_set images
             val_tr_unused : (optional), dont use used in training for validation
         """
         self._batch_size = batch_size
         if val_tr_unused == None:
             self._iterable = list(glob(train_dir + '*.jpg'))
         else:
+            print("Val captions for generation : ", len(val_tr_unused))
             self._iterable = val_tr_unused
         self._train_dir = train_dir
-        if repartiton:
-            # assume that validation data stored in coco folder
-            val_set_path = '/'.join(train_dir.split('/')[:-2] + ['val2014/'])
-            val_list = list(glob(val_set_path + '*.jpg'))
-            shuffle(val_list)
-            # choose some images for validation, get images unused in training
-            self.gen_val_cap = None
-            if self.gen_val_cap != None and self.gen_val_cap < 0:
-                self.gen_val_cap = None
-            # get unused captions image names
-            self.unused_cap_in = None
-            if self.gen_val_cap:
-                self._iterable.extend(val_list[:-self.gen_val_cap])
-                self.unused_cap_in = val_list[self.gen_val_cap:]
-            else:
-                self._iterable.extend(val_list)
-            print("train + val set size: ", len(self._iterable))
-            if not val_feature_dict:
-                raise ValueError("If use validation set images for "
-                                 "training need to specify val_feature_dict")
-            self.val_feature_dict = val_feature_dict
         if not batch_size:
             print("use all data")
             self._batch_size = len(self._iterable)
@@ -72,12 +47,6 @@ class Batch_Generator():
         if captions:
             self.cap_instance = captions
             self.captions = self.cap_instance.captions_indexed
-            if repartiton:
-                if not val_cap_instance:
-                    raise ValueError("If use validation set images for "
-                                     "training need to specify val_cap instance")
-                self.val_cap_instance = val_cap_instance
-                self.val_captions = self.val_cap_instance.captions_indexed
         # seed for reproducibility
         self.random_seed = 42
         np.random.seed(self.random_seed)
@@ -85,6 +54,34 @@ class Batch_Generator():
         self.im_shape = im_shape
         self.feature_dict = feature_dict
         self.get_image_ids = get_image_ids
+        self.unused_cap_in = None
+
+    def repartiton(self, val_cap_instance, val_feature_dict, gen_val_cap):
+        self.gen_val_cap = gen_val_cap
+        if not val_cap_instance:
+            raise ValueError("If use validation set images for "
+                             "training need to specify val_cap instance")
+        self.val_cap_instance = val_cap_instance
+        self.val_captions = self.val_cap_instance.captions_indexed
+        # assume that validation data stored in coco folder
+        val_set_path = '/'.join(self._train_dir.split('/')[:-2] + ['val2014/'])
+        val_list = list(glob(val_set_path + '*.jpg'))
+        shuffle(val_list)
+        # choose some images for validation, get images unused in training
+        if self.gen_val_cap != None and self.gen_val_cap < 0:
+            self.gen_val_cap = None
+        # get unused captions image names
+        if self.gen_val_cap:
+            self._iterable.extend(val_list[:-self.gen_val_cap])
+            self.unused_cap_in = val_list[-self.gen_val_cap:]
+        else:
+            self._iterable.extend(val_list)
+        print("Train + Validation set size (use repartition): ", len(
+            self._iterable))
+        if not val_feature_dict:
+            raise ValueError("If use validation set images for "
+                             "training need to specify val_feature_dict")
+        self.val_feature_dict = val_feature_dict
 
     def _images_c_v(self, imn_batch, c_v):
         """Internal method, returns [batch_size, I] and [batch_size, c(I)]
