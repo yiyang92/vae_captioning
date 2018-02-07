@@ -107,8 +107,9 @@ class Dictionary(object):
         counter = Counter(self._words)
         # words, that occur less than 5 times dont include
         sorted_dict = sorted(counter.items(), key= lambda x: (-x[1], x[0]))
+        # keep 4 words to be included in vocabulary
         sorted_dict = [(wd, count) for wd, count in sorted_dict
-                       if count >= 3 or wd == '<UNK>']
+                       if count >= 4 or wd == '<UNK>']
         # after sorting the dictionary, get ordered words
         words, _ = list(zip(*sorted_dict))
         self._word2idx = dict(zip(words, range(1, len(words) + 1)))

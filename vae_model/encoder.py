@@ -17,7 +17,8 @@ class Encoder():
         self.lengths = lengths
         self.params = params
         # c_i - optional cluster_vectors, can be specified separately
-        self.c_i = None
+        self.c_i = None #
+        self.c_i_ph = None
 
     def q_net(self):
         """Calculate approximate posterior q(z|x, f(I))
@@ -51,15 +52,45 @@ class Encoder():
                                                          swap_memory=True,
                                                          dtype=tf.float32,
                                                          scope=scope1)
+            # [batch_size, 2 * lstm_hidden_size]
+            # final_state = ((c, h), )
             final_state = tf.concat(values=final_state[0], axis=1,
                                     name="encoder_hidden")
-            lz_mean = layers.dense(inputs=final_state,
-                                   units=self.params.latent_size,
-                                   activation=None)
-            lz_logstd = layers.dense(inputs=final_state,
-                                     units=self.params.latent_size,
-                                     activation=None)
+            if self.params.prior == 'Normal':
+                lz_mean = layers.dense(inputs=final_state,
+                                       units=self.params.latent_size,
+                                       activation=None)
+                lz_logstd = layers.dense(inputs=final_state,
+                                         units=self.params.latent_size,
+                                         activation=None)
             # define latent variable`s Stochastic Tensor
+            # add mu_k, sigma_k, CVAe ag-cvae
+            if self.params.prior == 'GMM':
+                # [batch_size, 150]?
+                # ck*N(mu, sigma)
+                #clusters = tf.argmax(self.c_i_ph, 1) # [batch_size]
+                tm_list = []
+                tv_list = []
+                for i in range(90):
+                    with tf.variable_scope("gmm_ll_{}".format(i)):
+                        lz_mean = layers.dense(inputs=final_state,
+                                               units=self.params.latent_size)
+                        lz_logstd = layers.dense(inputs=final_state,
+                                                 units=self.params.latent_size)
+                        tm_list.append(tf.expand_dims(lz_mean, 1))
+                        tv_list.append(tf.expand_dims(lz_logstd, 1))
+                # [batch_size, 90, 150]
+                # ob_vector [batch_size, 90]
+                # need [batch_size, 150]
+                lz_mean = tf.concat(tm_list, 1)
+                lz_logstd = tf.concat(tv_list, 1)
+                c_i_exp = tf.expand_dims(self.c_i_ph, 1)
+                lz_mean = tf.squeeze(tf.matmul(c_i_exp, lz_mean), 1)
+                lz_logstd = tf.squeeze(tf.matmul(c_i_exp, lz_logstd), 1)
+                # debug
+                print(lz_mean)
+            if self.params.prior == 'AG':
+                clusters = tf.argmax(self.c_i_ph, 1)
             z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
         return z

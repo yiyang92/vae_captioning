@@ -9,25 +9,25 @@ class Parameters():
     #gen_length = 20
     # if greedy, choose word with the highest prob;
     # if sample, sample from multinullli distribution
-    sample_gen = 'greedy' # 'greedy', 'sample', 'beam_search'
+    # sample_gen = 'greedy' # 'greedy', 'sample', 'beam_search'
+    sample_gen = 'beam_search'
     # beam search
-    #beam_search = True
-    #beam_size = 3
+    beam_size = 2
     # encoder
     encoder_rnn_layers = 1
-    encoder_hidden = 191
+    encoder_hidden = 512
     keep_rate = 1.0
     # decoder
     std = 0.1 # decodertest time N(0, std)
-    decoder_hidden = 191
+    decoder_hidden = 512
     decoder_rnn_layers = 1
     dec_keep_rate = 1.0
-    embed_size = 353
-    gen_max_len = 300
+    embed_size = 256
+    gen_max_len = 30
     gen_z_samples = 20 # according to paper (Diverse cap)
     ann_param = 5 # KL-divergence component weight in objective function
     dec_lstm_drop = 1.0
-    optimizer = 'SGD'
+    optimizer = 'SGD' # SGD or Adam
     # restore?
     restore = False
     # technical parameters
@@ -40,6 +40,7 @@ class Parameters():
     num_epochs_per_decay = 5
     use_c_v = False
     gen_val_captions = 4000 # set -1 to generate captions on a full dataset
+    prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     def parse_args(self):
         import argparse
         import os

@@ -6,17 +6,14 @@ import zhusuan as zs
 from tensorflow import layers
 from tensorflow.python.util.nest import flatten
 
+# import utils
 from utils.data import Data
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 from utils.parameters import Parameters
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
 
-# import utils
 print("Tensorflow version: ", tf.__version__)
-
-# for embeddings use pretrained VGG16, fine tune?
-# encoder - decoder, try to write class? Look at zhusuan new classes
 
 def main(params):
     # load data, class data contains captions, images, image features (if avaliable)
@@ -48,11 +45,6 @@ def main(params):
     # encoder, input fv and ...<BOS>,get z
     if not params.no_encoder:
         encoder = Encoder(images_fv, ann_inputs_enc, ann_lengths, params)
-        qz = encoder.q_net()
-        # kld between normal distributions KL(q, p), see Kingma et.al
-        kld = -0.5 * tf.reduce_mean(tf.reduce_sum(1 + qz.distribution.logstd
-                                                      - tf.square(qz.distribution.mean)
-                                                      - tf.exp(qz.distribution.logstd),1))
     # decoder, input_fv, get x, x_logits (for generation)
     decoder = Decoder(images_fv, ann_inputs_dec, ann_lengths, params,
                       cap_dict)
@@ -67,6 +59,22 @@ def main(params):
         decoder.c_i_ph = c_i
         if not params.no_encoder:
             encoder.c_i = c_i_emb
+            encoder.c_i_ph = c_i
+    if not params.no_encoder:
+        qz = encoder.q_net()
+        if params.prior == 'Normal':
+            # kld between normal distributions KL(q, p), see Kingma et.al
+            kld = -0.5 * tf.reduce_mean(
+                tf.reduce_sum(
+                    1 + qz.distribution.logstd
+                    - tf.square(qz.distribution.mean)
+                    - tf.exp(qz.distribution.logstd),1))
+        elif params.prior == 'GMM':
+            kld = -0.5 * tf.reduce_mean(
+                tf.reduce_sum(
+                    1 + qz.distribution.logstd
+                    - tf.square(qz.distribution.mean)
+                    - tf.exp(qz.distribution.logstd),1))
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})
@@ -194,8 +202,13 @@ def main(params):
             if params.use_c_v:
                 # 0 element doesnt matter
                 c_v = c_v[:, 1:]
-            sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
-                                               image_f_inputs, c_v=c_v)
+            if params.sample_gen == 'beam_search':
+                sent = decoder.beam_search(sess, image_ids, f_images_batch,
+                                           image_f_inputs, c_v,
+                                           beam_size=params.beam_size)
+            else:
+                sent, _ = decoder.online_inference(sess, image_ids, f_images_batch,
+                                                   image_f_inputs, c_v=c_v)
             captions_gen += sent
         print("Generated {} captions".format(len(captions_gen)))
         val_gen_file = "./val_{}.json".format(params.gen_name)

@@ -95,6 +95,7 @@ class Decoder():
             outputs_r = tf.reshape(outputs, [-1, cell_0.output_size])
             x_logits = tf.layers.dense(outputs_r,
                                        units=self.data_dict.vocab_size)
+            # for debugging
             shpe = (tf.shape(z), tf.shape(outputs_r),
                     tf.shape(outputs))
             # for generating
@@ -104,20 +105,20 @@ class Decoder():
                     sample = tf.multinomial(
                         x_logits / self.params.temperature, 1)[0][0]
                 elif self.params.sample_gen == 'beam_search':
-                    pass
+                    sample = tf.nn.softmax(x_logits)
                 else:
                     sample = tf.nn.softmax(x_logits)
         return model, x_logits, shpe, (initial_state, final_state, sample)
 
     def online_inference(self, sess, picture_ids, in_pictures, image_f_inputs,
-                         to_json=False, stop_word='<EOS>', c_v=None):
+                         stop_word='<EOS>', c_v=None):
         """Generate caption, given batch of pictures and their ids (names).
         Args:
             sess: tf.Session() object
             picture_ids: list of picture ids in shape [batch_size]
             in_pictures: input pictures
-            to_json: whether to write captions into json file
             stop_word: when stop caption generation
+            image_f_inputs: image placeholder
         Returns:
             cap_list: list of format [{'image_id', caption: ''}]
             cap_raw: list of generated caption indices
@@ -166,57 +167,94 @@ class Decoder():
                                                if word not in ['<BOS>', '<EOS>']])
         return cap_list, cap_raw
 # TODO: finish beam search implementation
-    # def beam_search(self, sess, picture_ids, in_pictures, stop_word='<EOS>',
-    #                 beam_size=2):
-    #     seed = self.data_dict.word2idx[seed]
-    #     stop_word = self.data_dict.word2idx['<EOS>']
-    #     for i in range(len(in_pictures)):
-    #         # need to get n highest probabilities, than for each of them find p(x1)*p(x2|x1)...
-    #         beam = [[seed] for _ in range(beam_size)]
-    #         beam_prob = np.zeros([beam_size, self.params.gen_length])
-    #         # initial feed
-    #         feed = {self.captions: np.array(seed).reshape([1, 1]),
-    #                 self.lengths: [1] * beam_size,
-    #                 self.images_fv: np.expand_dims(in_pictures[i], 0)}
-    #         # to tf add log_prob returring op norm_log_prob = tf.log(tf.softmax(...))
-    #         # sample = tf.multinomial(...)
-    #         index_arr, state, probs = sess.run([sample, out_state, log_prob], feed)
-    #         #print(index_arr)
-    #         index_arr = index_arr[0]
-    #         # keeping previous states of hypothesis sentences
-    #         states = [state] * beam_size
-    #         # probabilities
-    #         probs = probs[0][:beam_size]*-1
-    #         # append to beam
-    #         beam_prob[:, 0] = np.ones([beam_size])
-    #         for j in range(beam_size):
-    #              beam[j].append(index_arr[j])
-    #              beam_prob[j][1] = probs[j]
-    #         for st in range(2, gen_seq_len):
-    #             for i in range(beam_size):
-    #                 if stop_word in beam[i]:
-    #                     continue
-    #                 len_ = len(beam[i])
-    #                 feed = {inputs_ps: np.array(beam[i]).reshape([1, len_]),
-    #                     length: [len_], state_ps: states[i]}
-    #                 # feed to network get probs
-    #                 index_arr, state, probs = sess.run([sample, out_state, log_prob], feed)
-    #                 index_arr = index_arr[0]
-    #                 states[i] = state
-    #                 # probabilities
-    #                 probs = probs[0][:beam_size]*-1
-    #                 max_sum_index = 0
-    #                 # find probability max_sum_index and append to a beam
-    #                 choose_index = -1
-    #                 for j in range(beam_size):
-    #                     temp_sum = probs[j] + np.sum(beam_prob[i])
-    #                     if temp_sum > max_sum_index:
-    #                         max_sum_index = temp_sum
-    #                         choose_index += 1
-    #                 beam_prob[i][st] = probs[choose_index]
-    #                 beam[i].append(index_arr[choose_index])
-    #         # find the best beam
-    #         best_beam =beam[np.argmax(np.sum(beam_prob, 1))]
-    #         #print("Best beam", best_beam)
-    #         #print(beam)
-    #     return [data_dict.idx2word[word] for word in best_beam]
+    def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
+                    c_v=None, beam_size=2, ret_beam=False):
+        """Generate captions using beam search algorithm
+        Args:
+            sess: tf.Session
+            picture_ids: list of picture ids in shape [batch_size]
+            in_pictures: input pictures
+            beam_size: keep how many beam candidates
+            ret_beam: whether to return several beam canditates
+            image_f_inputs: image placeholder
+            c_v: cluster vectors (optional)
+        Returns:
+            cap_list: list of format [{'image_id', caption: ''}]
+                or
+            cap_list: list of format [[{'image_id', caption: ''}] * beam_size]
+        """
+        seed = self.data_dict.word2idx['<BOS>']
+        stop_word = self.data_dict.word2idx['<EOS>']
+        cap_list = [None] * in_pictures.shape[0]
+        with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
+            _, _, shpe, states = self.px_z_fi({}, gen_mode = True)
+        init_state, out_state, sample = states
+        for im in range(len(in_pictures)):
+            cap_list[im] = {'image_id': picture_ids[im], 'caption': ' '}
+            # captions
+            beam = [[seed] for _ in range(beam_size)]
+            # need to get n highest probabilities, than for each of them find p(x1)*p(x2|x1)...
+            beam_prob = np.zeros([beam_size, self.params.gen_max_len])
+            # initial feed
+            feed = {self.captions: np.array(seed).reshape([1, 1]),
+                    self.lengths: [1],
+                    image_f_inputs: np.expand_dims(in_pictures[im], 0)}
+            if self.c_i != None:
+                feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
+            # to tf add log_prob returring op norm_log_prob = tf.log(tf.softmax(...))
+            probs, state = sess.run([sample, out_state], feed)
+            # sort list probs, enumerate to remember indices (I like python "_")
+            w_probs = list(enumerate(probs.ravel()))
+            w_probs.sort(key=lambda x: -x[1])
+            # keep n probs
+            w_probs = w_probs[:beam_size]
+            # keeping previous states of hypothesis sentences
+            states = [state] * beam_size
+            # prob of first words = 1
+            beam_prob[:, 0] = np.log(np.ones([beam_size]))
+            for j in range(beam_size):
+                beam[j].append(w_probs[j][0])
+                beam_prob[j][1] = np.log(w_probs[j][1])
+            del w_probs
+            # continue to generate, until max_len
+            for st in range(2, self.params.gen_max_len):
+                for i in range(beam_size):
+                    if stop_word in beam[i]:
+                        continue
+                    len_ = len(beam[i])
+                    feed = {self.captions: np.array(beam[i]).reshape([1, len_]),
+                            self.lengths: [len_],
+                            image_f_inputs: np.expand_dims(in_pictures[im], 0),
+                            init_state: states[i]}
+                    if self.c_i != None:
+                        feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
+                    # feed to network get probs
+                    probs, state = sess.run([sample, out_state], feed)
+                    w_probs = list(enumerate(probs.ravel()))
+                    w_probs.sort(key=lambda x: -x[1])
+                    # keep n probs
+                    w_probs = w_probs[:beam_size]
+                    states[i] = state
+                    # probabilities
+                    max_sum_index = np.log(1e-11)
+                    # find probability max_sum_index and append to a beam
+                    wd = None
+                    for w, p in w_probs:
+                        if p < 1e-12:
+                            continue  # Avoid log(0).
+                        temp_sum = np.log(p) + np.sum(beam_prob[i])
+                        if temp_sum > max_sum_index:
+                            max_sum_index = temp_sum
+                            beam_prob[i][st] = p
+                            wd = w
+                    if wd:
+                        beam[i].append(wd)
+            # find the best beam
+            best_beam = beam[np.argmax(np.sum(beam_prob, 1))]
+            cap_list[im]['caption'] = ' '.join([self.data_dict.idx2word[word] for
+                                               word in best_beam
+                                               if word not in [seed, stop_word]])
+            # print(' '.join([self.data_dict.idx2word[word] for
+            #                                    word in best_beam
+            #                                    if word not in [seed, stop_word]]))
+        return cap_list
