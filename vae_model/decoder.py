@@ -166,7 +166,7 @@ class Decoder():
             cap_list[i]['caption'] = ' '.join([word for word in sentence
                                                if word not in ['<BOS>', '<EOS>']])
         return cap_list, cap_raw
-# TODO: finish beam search implementation
+        
     def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
                     c_v=None, beam_size=2, ret_beam=False):
         """Generate captions using beam search algorithm
