@@ -3,16 +3,15 @@ class Parameters():
     latent_size = 150
     num_epochs = 20
     learning_rate = 0.001
-    batch_size = 128 # for no encoder use bs=30
+    batch_size = 128 # for no encoder use bs=30 and SGD with lr 2
     # for decoding
     temperature = 1.0
-    #gen_length = 20
     # if greedy, choose word with the highest prob;
     # if sample, sample from multinullli distribution
     # sample_gen = 'greedy' # 'greedy', 'sample', 'beam_search'
     sample_gen = 'beam_search'
     # beam search
-    beam_size = 2
+    beam_size = 10
     # encoder
     encoder_rnn_layers = 1
     encoder_hidden = 512
@@ -32,8 +31,9 @@ class Parameters():
     restore = False
     # technical parameters
     LOG_DIR = './model_logs/'
+    save_params = 0
     no_encoder = False
-    vocab_size = 0 # need to be set during data load
+    vocab_size = None # need to be set during data load
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
     gen_name = "00"
     checkpoint = "last_run"
@@ -93,6 +93,9 @@ class Parameters():
                             action="store_true")
         parser.add_argument('--std', default=self.std,
                             help="z~N(0, std), during the test time")
+        parser.add_argument('--save_params',
+                            help="save params class into pickle",
+                            action="store_true")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -116,6 +119,7 @@ class Parameters():
         self.use_c_v = args.c_v
         self.batch_size = int(args.bs)
         self.std = float(args.std)
+        self.save_params = args.save_params
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

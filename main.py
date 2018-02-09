@@ -40,8 +40,8 @@ def main(params):
     # dictionary
     cap_dict = data.dictionary
     params.vocab_size = cap_dict.vocab_size
-    # image fesatures [b_size + f_size(4096)] -> [b_size + embed_size]
-    images_fv = layers.dense(image_f_inputs, params.embed_size)
+    # image features [b_size + f_size(4096)] -> [b_size + embed_size]
+    images_fv = layers.dense(image_f_inputs, params.embed_size, name='imf_emb')
     # encoder, input fv and ...<BOS>,get z
     if not params.no_encoder:
         encoder = Encoder(images_fv, ann_inputs_enc, ann_lengths, params)
@@ -53,7 +53,7 @@ def main(params):
         # 80 is number of classes, for now hardcoded
         # for GMM-CVAE must be specified
         c_i = tf.placeholder(tf.float32, [None, 90])
-        c_i_emb = layers.dense(c_i, params.embed_size)
+        c_i_emb = layers.dense(c_i, params.embed_size, name='cv_emb')
         # map cluster vectors into embedding space
         decoder.c_i = c_i_emb
         decoder.c_i_ph = c_i
@@ -128,7 +128,8 @@ def main(params):
         optimize = tf.train.AdamOptimizer(
             params.learning_rate).apply_gradients(grads_vars)
     # model restore
-    saver = tf.train.Saver()
+    saver = tf.train.Saver(tf.trainable_variables())
+    # m_builder = tf.saved_model.builder.SavedModelBuilder('./saved_model')
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
@@ -189,10 +190,12 @@ def main(params):
         # save model
         if not os.path.exists("./checkpoints"):
             os.makedirs("./checkpoints")
+        # builder.add_meta_graph_and_variables(sess, ["main_model"])
         if params.num_epochs > 0:
             save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
                 params.checkpoint))
             print("Model saved in file: %s" % save_path)
+        # run inference
         # validation set
         captions_gen = []
         print("Generating captions for val file")
@@ -239,4 +242,15 @@ if __name__ == '__main__':
     params = Parameters()
     params.parse_args()
     coco_dir = params.coco_dir
+    # save parameters for futher usage
+    if params.save_params:
+        import pickle
+        param_fn = "./pickles/params_{}_{}_{}_{}.pickle".format(params.prior,
+                                        params.no_encoder,
+                                        params.checkpoint,
+                                        params.use_c_v)
+        print("Saving params to: ", param_fn)
+        with open(param_fn, 'wb') as wf:
+            pickle.dump(file=wf, obj=params)
+    # train model, generate captions for val-test sets
     main(params)

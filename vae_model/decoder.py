@@ -9,12 +9,13 @@ import numpy as np
 class Decoder():
     """Decoder class
     """
-    def __init__(self, images_fv, captions, lengths, params, data_dict):
+    def __init__(self, images_fv, captions, lengths,
+                 params, data_dict):
         """
         Args:
             images_fv: image features mapping to word embeddings
             captions: captions input placeholder
-            lengths: caption length without zero-padding, used for tensorflow
+            lengths: caption length without zero-padding, placeholder
             params: Parameters() class instance
             data_dict: Dictionary() class instance, used for caption generators
         dynamic_rnn lengths
@@ -42,23 +43,26 @@ class Decoder():
                           group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
             # encoder and decoder have different embeddings but the same image features
-            with tf.device("/cpu:0"):
-                embedding = tf.get_variable(
-                        "dec_embeddings", [self.params.vocab_size,
-                                           self.params.embed_size],
-                        dtype=tf.float32)
-                vect_inputs = tf.nn.embedding_lookup(embedding, self.captions)
-            # captions dropout
-            if self.params.dec_keep_rate < 1 and not gen_mode:
-               vect_inputs = tf.nn.dropout(vect_inputs,
-                                           self.params.dec_keep_rate)
-            # map image feature vector to embed_dimension
-            with tf.variable_scope("decoder") as scope:
+            with tf.variable_scope("net") as scope:
+                with tf.device("/cpu:0"):
+                    embedding = tf.get_variable(
+                            "dec_embeddings", [self.params.vocab_size,
+                                               self.params.embed_size],
+                            dtype=tf.float32)
+                    vect_inputs = tf.nn.embedding_lookup(embedding,
+                                                         self.captions)
+                # captions dropout
+                if self.params.dec_keep_rate < 1 and not gen_mode:
+                    vect_inputs = tf.nn.dropout(vect_inputs,
+                                                self.params.dec_keep_rate)
+                dec_lstm_drop = self.params.dec_lstm_drop
+                if gen_mode:
+                    dec_lstm_drop = 1.0
                 cell_0 = make_rnn_cell(
                     [self.params.decoder_hidden for _ in range(
                         self.params.decoder_rnn_layers)],
                     base_cell=tf.contrib.rnn.LSTMCell,
-                    dropout_keep_prob=self.params.dec_lstm_drop)
+                    dropout_keep_prob=dec_lstm_drop)
                 zero_state0 = cell_0.zero_state(
                     batch_size=tf.shape(self.images_fv)[0],
                     dtype=tf.float32)
@@ -74,27 +78,25 @@ class Decoder():
                     # vector z, mapped into embed_dim
                     z = tf.reshape(z, [-1, self.params.latent_size *
                                        self.params.gen_z_samples])
-                    z_dec = layers.dense(z, self.params.embed_size)
+                    z_dec = layers.dense(z, self.params.embed_size,
+                                         name='z_rnn')
                     _, z_state = cell_0(z_dec, initial_state0)
                     initial_state = rnn_placeholders(z_state)
                 # captions LSTM
-                for tensor in flatten(initial_state):
-                    tf.add_to_collection('rnn_dec_inp', tensor)
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
                                                          sequence_length=None,
                                                          initial_state=initial_state,
                                                          swap_memory=True,
                                                          dtype=tf.float32)
-                for tensor in flatten(final_state):
-                    tf.add_to_collection('rnn_dec_out', tensor)
             # output shape [batch_size, seq_length, self.params.decoder_hidden]
             if gen_mode:
                 # only interested in the last output
                 outputs = outputs[:, -1, :]
             outputs_r = tf.reshape(outputs, [-1, cell_0.output_size])
             x_logits = tf.layers.dense(outputs_r,
-                                       units=self.data_dict.vocab_size)
+                                       units=self.data_dict.vocab_size,
+                                       name='rnn_logits')
             # for debugging
             shpe = (tf.shape(z), tf.shape(outputs_r),
                     tf.shape(outputs))
@@ -165,8 +167,9 @@ class Decoder():
                     break
             cap_list[i]['caption'] = ' '.join([word for word in sentence
                                                if word not in ['<BOS>', '<EOS>']])
+            # print(cap_list[i]['caption'])
         return cap_list, cap_raw
-        
+
     def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
                     c_v=None, beam_size=2, ret_beam=False):
         """Generate captions using beam search algorithm
@@ -236,16 +239,18 @@ class Decoder():
                     w_probs = w_probs[:beam_size]
                     states[i] = state
                     # probabilities
-                    max_sum_index = np.log(1e-11)
+                    max_sum_index = np.log(1e-12)
                     # find probability max_sum_index and append to a beam
                     wd = None
                     for w, p in w_probs:
                         if p < 1e-12:
                             continue  # Avoid log(0).
                         temp_sum = np.log(p) + np.sum(beam_prob[i])
+                        # normalization
+                        temp_sum /= len_ + 1
                         if temp_sum > max_sum_index:
                             max_sum_index = temp_sum
-                            beam_prob[i][st] = p
+                            beam_prob[i][st] = np.log(p)
                             wd = w
                     if wd:
                         beam[i].append(wd)

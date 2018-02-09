@@ -64,10 +64,11 @@ class Captions():
 
 # building Vocabulary
 class Dictionary(object):
-    def __init__(self, caption_dict):
+    def __init__(self, caption_dict, keep_words=3):
         """
         Args:
             caption_dict: dictionary of {file_name: [['cap1'], ['cap2']]}
+            keep_words: keep every n words
         """
         # sentences - array of sentences
         self._captions = caption_dict
@@ -107,9 +108,9 @@ class Dictionary(object):
         counter = Counter(self._words)
         # words, that occur less than 5 times dont include
         sorted_dict = sorted(counter.items(), key= lambda x: (-x[1], x[0]))
-        # keep 4 words to be included in vocabulary
+        # keep n words to be included in vocabulary
         sorted_dict = [(wd, count) for wd, count in sorted_dict
-                       if count >= 4 or wd == '<UNK>']
+                       if count >= 3 or wd == '<UNK>']
         # after sorting the dictionary, get ordered words
         words, _ = list(zip(*sorted_dict))
         self._word2idx = dict(zip(words, range(1, len(words) + 1)))
@@ -117,6 +118,10 @@ class Dictionary(object):
         # add <PAD> as zero
         self._idx2word[0] = '<PAD>'
         self._word2idx['<PAD>'] = 0
+        import pickle
+        # save to ./pickles folder
+        with open('./pickles/capt_vocab.pickle', 'wb') as wf:
+            pickle.dump(file=wf, obj=self._captions)
         print("Vocabulary size: ", len(self._word2idx))
 
     def __len__(self):

@@ -154,7 +154,6 @@ class Batch_Generator():
                     yield images, (inp_captions, l_captions), lengths, cl_v
                 imn_batch = [None] * self._batch_size
         if imn_batch[0]:
-            # TODO: avoid this repeat by defining function
             imn_batch = [item for item in imn_batch if item]
             images, cl_v = self._images_c_v(imn_batch, c_v)
             inp_captions, l_captions, lengths = self._form_captions_batch(

@@ -1,2 +1,8 @@
 .ftpconfig
-./obj_vectors
+.gitignore
+obj_vectors/**
+pickles/**
+checkpoints/**
+images/**
+vae_model/__**
+utils/__pycac**
