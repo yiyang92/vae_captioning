@@ -85,6 +85,8 @@ class Batch_Generator():
 
     def _images_c_v(self, imn_batch, c_v):
         """Internal method, returns [batch_size, I] and [batch_size, c(I)]
+        Returns:
+            images, cl_v: images and cluster vectors
         """
         if self.feature_dict:
             images = []

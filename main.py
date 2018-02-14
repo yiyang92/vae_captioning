@@ -110,7 +110,8 @@ def main(params):
         kld = tf.constant(0.0)
     # we need to maximize lower_bound
     gradients = tf.gradients(lower_bound, tf.trainable_variables())
-    grads_vars = zip(gradients, tf.trainable_variables())
+    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
+    grads_vars = zip(clipped_grad, tf.trainable_variables())
     # learning rate decay
     learning_rate = tf.constant(params.learning_rate)
     global_step = tf.placeholder(tf.int32)
