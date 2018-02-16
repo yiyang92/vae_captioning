@@ -256,7 +256,7 @@ class Decoder():
                         score = logprob
                         # complete caption, got <EOS>
                         if w == stop_word:
-                            if len_norm_f > 0
+                            if len_norm_f > 0:
                                 score /= len(sentence)**len_norm_f
                             beam = Beam(sentence, cur_state, logprob, score)
                             complete_captions.push(beam)
