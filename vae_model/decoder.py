@@ -175,19 +175,20 @@ class Decoder():
         return cap_list, cap_raw
 
     def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
-                    c_v=None, beam_size=2, ret_beams=False, len_norm_f=0.9):
+                    c_v=None, beam_size=2, ret_beams=False, len_norm_f=0.7):
         """Generate captions using beam search algorithm
         Args:
             sess: tf.Session
             picture_ids: list of picture ids in shape [batch_size]
             in_pictures: input pictures
             beam_size: keep how many beam candidates
-            ret_beam: whether to return several beam canditates
+            ret_beams: whether to return several beam canditates
             image_f_inputs: image placeholder
             c_v: cluster vectors (optional)
+            len_norm_f: beam search length normalization parameter
         Returns:
             cap_list: list of format [{'image_id', caption: ''}]
-                or
+                or (if ret_beams)
             cap_list: list of format [[{'image_id', caption: '' * beam_size}]]
         """
         seed = self.data_dict.word2idx['<BOS>']

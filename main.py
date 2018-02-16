@@ -75,6 +75,12 @@ def main(params):
                     1 + qz.distribution.logstd
                     - tf.square(qz.distribution.mean)
                     - tf.exp(qz.distribution.logstd),1))
+        elif params.prior == 'AG':
+            kld = -0.5 * tf.reduce_mean(
+                tf.reduce_sum(
+                    1 + qz.distribution.logstd
+                    - tf.square(qz.distribution.mean)
+                    - tf.exp(qz.distribution.logstd),1))
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})

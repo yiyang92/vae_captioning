@@ -66,6 +66,11 @@ class Encoder():
             # define latent variable`s Stochastic Tensor
             # add mu_k, sigma_k, CVAe ag-cvae
             if self.params.prior == 'GMM':
+                # TODO: finish implementation
+                pass
+
+            if self.params.prior == 'AG':
+                #clusters = tf.argmax(self.c_i_ph, 1)
                 # [batch_size, 150]?
                 # ck*N(mu, sigma)
                 #clusters = tf.argmax(self.c_i_ph, 1) # [batch_size]
@@ -88,9 +93,7 @@ class Encoder():
                 lz_mean = tf.squeeze(tf.matmul(c_i_exp, lz_mean), 1)
                 lz_logstd = tf.squeeze(tf.matmul(c_i_exp, lz_logstd), 1)
                 # debug
-                print(lz_mean)
-            if self.params.prior == 'AG':
-                clusters = tf.argmax(self.c_i_ph, 1)
+                #print(lz_mean)
             z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
         return z
