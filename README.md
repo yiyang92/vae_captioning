@@ -37,7 +37,7 @@ https://yadi.sk/d/TCyXUmKk3SPVtc
 - CVAE baseline (implemented)
 - cluster vectors (partially impemented, vectors for test set generated using
   tensorflow object detection API and faster-RCNN)
-- beam search (implemented, but needs some corrrections)
+- beam search (implemented)
 - AG-CVAE (partially implemented)
 - GMM-CVAE (in progress)
 - Caption generation for new photos (partially implemented, will need to automate cluster vectors generation process)

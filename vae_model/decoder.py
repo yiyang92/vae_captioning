@@ -1,10 +1,12 @@
 import tensorflow as tf
 from tensorflow import layers
 from tensorflow.python.util.nest import flatten
+
 import zhusuan as zs
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 import numpy as np
 
+from utils.top_n import TopN, Beam
 
 class Decoder():
     """Decoder class
@@ -83,6 +85,7 @@ class Decoder():
                     _, z_state = cell_0(z_dec, initial_state0)
                     initial_state = rnn_placeholders(z_state)
                 # captions LSTM
+                # TODO: correct sequence_length implementation
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
                                                          sequence_length=None,
@@ -143,7 +146,7 @@ class Decoder():
             while (cur_it < self.params.gen_max_len):
                 input_seq = [self.data_dict.word2idx[word] for word in sentence]
                 feed = {self.captions: np.array(input_seq)[-1].reshape([1, 1]),
-                        self.lengths: [1],
+                        self.lengths: [len(input_seq)],
                         image_f_inputs: np.expand_dims(in_pictures[i], 0)}
                 if self.c_i != None:
                     feed.update({self.c_i_ph: np.expand_dims(c_v[i], 0)})
@@ -172,7 +175,7 @@ class Decoder():
         return cap_list, cap_raw
 
     def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
-                    c_v=None, beam_size=2, ret_beam=False):
+                    c_v=None, beam_size=2, ret_beams=False, len_norm_f=0.9):
         """Generate captions using beam search algorithm
         Args:
             sess: tf.Session
@@ -185,82 +188,106 @@ class Decoder():
         Returns:
             cap_list: list of format [{'image_id', caption: ''}]
                 or
-            cap_list: list of format [[{'image_id', caption: ''}] * beam_size]
+            cap_list: list of format [[{'image_id', caption: '' * beam_size}]]
         """
         seed = self.data_dict.word2idx['<BOS>']
         stop_word = self.data_dict.word2idx['<EOS>']
         cap_list = [None] * in_pictures.shape[0]
         with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
             _, _, shpe, states = self.px_z_fi({}, gen_mode = True)
-        init_state, out_state, sample = states
+        # state placeholder and ops
+        in_state, out_state, sample = states
         for im in range(len(in_pictures)):
             cap_list[im] = {'image_id': picture_ids[im], 'caption': ' '}
-            # captions
-            beam = [[seed] for _ in range(beam_size)]
-            # need to get n highest probabilities, than for each of them find p(x1)*p(x2|x1)...
-            beam_prob = np.zeros([beam_size, self.params.gen_max_len])
             # initial feed
             feed = {self.captions: np.array(seed).reshape([1, 1]),
                     self.lengths: [1],
                     image_f_inputs: np.expand_dims(in_pictures[im], 0)}
             if self.c_i != None:
                 feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
-            # to tf add log_prob returring op norm_log_prob = tf.log(tf.softmax(...))
+            # probs are normalized probs
             probs, state = sess.run([sample, out_state], feed)
-            # sort list probs, enumerate to remember indices (I like python "_")
-            w_probs = list(enumerate(probs.ravel()))
-            w_probs.sort(key=lambda x: -x[1])
-            # keep n probs
-            w_probs = w_probs[:beam_size]
-            # keeping previous states of hypothesis sentences
-            states = [state] * beam_size
-            # prob of first words = 1
-            beam_prob[:, 0] = np.log(np.ones([beam_size]))
-            for j in range(beam_size):
-                beam[j].append(w_probs[j][0])
-                beam_prob[j][1] = np.log(w_probs[j][1])
-            del w_probs
+            # initial Beam, pushed to the heap (TopN class)
+            # inspired by tf/models/im2txt
+            initial_beam = Beam(sentence=[seed],
+                                state=state,
+                                logprob=0.0,
+                                score=0.0)
+            partial_captions = TopN(beam_size)
+            partial_captions.push(initial_beam)
+            complete_captions = TopN(beam_size)
+
             # continue to generate, until max_len
-            for st in range(2, self.params.gen_max_len):
-                for i in range(beam_size):
-                    if stop_word in beam[i]:
-                        continue
-                    len_ = len(beam[i])
-                    feed = {self.captions: np.array(beam[i]).reshape([1, len_]),
-                            self.lengths: [len_],
+            for _ in range(self.params.gen_max_len - 1):
+                partial_captions_list = partial_captions.extract()
+                partial_captions.reset()
+                # get last word in the sentence
+                input_feed = [(c.sentence[-1],
+                               len(c.sentence)) for c in partial_captions_list]
+                state_feed = [c.state for c in partial_captions_list]
+                # get states and probs for every beam
+                probs_list, states_list = [], []
+                for inp_length, state in zip(input_feed, state_feed):
+                    inp, length = inp_length
+                    feed = {self.captions: np.array(inp).reshape([1, 1]),
+                            self.lengths: [length],
                             image_f_inputs: np.expand_dims(in_pictures[im], 0),
-                            init_state: states[i]}
+                            in_state: state}
                     if self.c_i != None:
                         feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
-                    # feed to network get probs
-                    probs, state = sess.run([sample, out_state], feed)
-                    w_probs = list(enumerate(probs.ravel()))
+                    probs, new_state = sess.run([sample, out_state], feed)
+                    probs_list.append(probs)
+                    states_list.append(new_state)
+                # for every beam get candidates and append to list
+                for i, partial_caption in enumerate(partial_captions_list):
+                    cur_state = states_list[i]
+                    cur_probs = probs_list[i]
+                    # sort list probs, enumerate to remember indices (I like python "_")
+                    w_probs = list(enumerate(cur_probs.ravel()))
                     w_probs.sort(key=lambda x: -x[1])
                     # keep n probs
                     w_probs = w_probs[:beam_size]
-                    states[i] = state
-                    # probabilities
-                    max_sum_index = np.log(1e-12)
-                    # find probability max_sum_index and append to a beam
-                    wd = None
                     for w, p in w_probs:
                         if p < 1e-12:
                             continue  # Avoid log(0).
-                        temp_sum = np.log(p) + np.sum(beam_prob[i])
-                        # normalization
-                        temp_sum /= len_ + 1
-                        if temp_sum > max_sum_index:
-                            max_sum_index = temp_sum
-                            beam_prob[i][st] = np.log(p)
-                            wd = w
-                    if wd:
-                        beam[i].append(wd)
+                        sentence = partial_caption.sentence + [w]
+                        logprob = partial_caption.logprob + np.log(p)
+                        score = logprob
+                        # complete caption, got <EOS>
+                        if w == stop_word:
+                            if len_norm_f > 0
+                                score /= len(sentence)**len_norm_f
+                            beam = Beam(sentence, cur_state, logprob, score)
+                            complete_captions.push(beam)
+                        else:
+                            beam = Beam(sentence, cur_state, logprob, score)
+                            partial_captions.push(beam)
+                if partial_captions.size() == 0:
+                    # When all captions are complete
+                    break
+            # If we have no complete captions then fall back to the partial captions.
+            # But never output a mixture of complete and partial captions because a
+            # partial caption could have a higher score than all the complete captions.
+            if not complete_captions.size():
+                complete_captions = partial_captions
             # find the best beam
-            best_beam = beam[np.argmax(np.sum(beam_prob, 1))]
-            cap_list[im]['caption'] = ' '.join([self.data_dict.idx2word[word] for
-                                               word in best_beam
-                                               if word not in [seed, stop_word]])
-            # print(' '.join([self.data_dict.idx2word[word] for
-            #                                    word in best_beam
-            #                                    if word not in [seed, stop_word]]))
+            beams = complete_captions.extract(sort=True)
+            if not ret_beams:
+                best_beam = beams[0]
+                capt = [self.data_dict.idx2word[word] for
+                                                   word in best_beam.sentence
+                                                   if word not in [seed,
+                                                                   stop_word]]
+                cap_list[im]['caption'] = ' '.join(capt)
+            # print(cap_list[im]['caption'])
+            # return list of beam candidates
+            if ret_beams:
+                c_list = []
+                for c in beams:
+                    capt = [self.data_dict.idx2word[word] for
+                                                       word in c.sentence
+                                                       if word not in [seed,
+                                                                       stop_word]]
+                    c_list.append(' '.join(capt))
+                cap_list[im]['caption'] = c_list
         return cap_list
