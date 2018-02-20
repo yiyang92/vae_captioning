@@ -43,7 +43,7 @@ class Encoder():
                     dtype=tf.float32)
                 # run this cell to get initial state
                 _, initial_state0 = cell_0(self.images_fv, zero_state0)
-                if self.c_i != None:
+                if self.c_i != None and self.params.use_c_v:
                     _, initial_state0 = cell_0(self.c_i, initial_state0)
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
@@ -67,13 +67,29 @@ class Encoder():
             # add mu_k, sigma_k, CVAe ag-cvae
             if self.params.prior == 'GMM':
                 # TODO: finish implementation
-                pass
+                cluster = tf.squeeze(tf.multinomial(self.c_i_ph, 1))
+                rng = tf.squeeze(tf.range(tf.shape(self.c_i_ph)[0]))
+                cluster = tf.stack([rng,
+                                    tf.cast(cluster, tf.int32)], 1)
+                tm_list, tv_list = [], []
+                for i in range(90):
+                    with tf.variable_scope("gmm_ll_{}".format(i)):
+                        lz_mean = layers.dense(inputs=final_state,
+                                               units=self.params.latent_size)
+                        lz_logstd = layers.dense(inputs=final_state,
+                                                 units=self.params.latent_size)
+                        tm_list.append(tf.expand_dims(lz_mean, 1))
+                        tv_list.append(tf.expand_dims(lz_logstd, 1))
+                # [batch_size, 90, z_dim]
+                tm_list = tf.concat(tm_list, 1)
+                tv_list = tf.concat(tv_list, 1)
+                lz_mean = tf.gather_nd(tm_list, cluster)
+                lz_logstd = tf.gather_nd(tv_list, cluster)
 
             if self.params.prior == 'AG':
                 #clusters = tf.argmax(self.c_i_ph, 1)
                 # [batch_size, 150]?
                 # ck*N(mu, sigma)
-                #clusters = tf.argmax(self.c_i_ph, 1) # [batch_size]
                 tm_list = []
                 tv_list = []
                 for i in range(90):

@@ -70,6 +70,9 @@ def main(params):
                     - tf.square(qz.distribution.mean)
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'GMM':
+            # initialize sigma as constant, mu drawn randomly
+            # TODO: finish GMM loss implementation
+            
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
                     1 + qz.distribution.logstd

@@ -70,7 +70,7 @@ class Decoder():
                     dtype=tf.float32)
                 # run this cell to get initial state
                 _, initial_state0 = cell_0(self.images_fv, zero_state0)
-                if self.c_i != None:
+                if self.c_i != None and self.params.use_c_v:
                     _, initial_state0 = cell_0(self.c_i, initial_state0)
                 if self.params.no_encoder:
                     if not gen_mode:
