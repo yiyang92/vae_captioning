@@ -48,7 +48,8 @@ def main(params):
     # decoder, input_fv, get x, x_logits (for generation)
     decoder = Decoder(images_fv, ann_inputs_dec, ann_lengths, params,
                       cap_dict)
-    if params.use_c_v:
+    if params.use_c_v or (
+        params.prior == 'GMM' or params.prior == 'AG'):
         # cluster vectors from "Diverse and Accurate Image Description.." paper.
         # 80 is number of classes, for now hardcoded
         # for GMM-CVAE must be specified
@@ -61,7 +62,14 @@ def main(params):
             encoder.c_i = c_i_emb
             encoder.c_i_ph = c_i
     if not params.no_encoder:
-        qz = encoder.q_net()
+        qz, tm_list, tv_list = encoder.q_net()
+        def init_clusters(num_clusters):
+            # initialize sigma as constant, mu drawn randomly
+            z_size = params.latent_size
+            c_sigma = tf.constant(0.1)
+            c_means = tf.random_normal([num_clusters,
+                                        z_size], mean=0.0, stddev=1.0)
+            return c_means, c_sigma
         if params.prior == 'Normal':
             # kld between normal distributions KL(q, p), see Kingma et.al
             kld = -0.5 * tf.reduce_mean(
@@ -72,18 +80,20 @@ def main(params):
         elif params.prior == 'GMM':
             # initialize sigma as constant, mu drawn randomly
             # TODO: finish GMM loss implementation
-            
+            c_means, c_sigma = init_clusters(90)
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
                     1 + qz.distribution.logstd
                     - tf.square(qz.distribution.mean)
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'AG':
-            kld = -0.5 * tf.reduce_mean(
-                tf.reduce_sum(
-                    1 + qz.distribution.logstd
-                    - tf.square(qz.distribution.mean)
-                    - tf.exp(qz.distribution.logstd),1))
+            c_means, c_sigma = init_clusters(90)
+            kld = -(tf.log(
+                c_sigma) - tf.log(qz.distribution.std) + (
+                    tf.log(qz.distribution.std**2 + tf.norm(
+                        qz.distribution.mean - tf.matmul(
+                            tf.squeeze(c_i), c_means))) - tf.log(
+                            2*qz.distribution.std**2)) - 1/2)
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})
@@ -173,10 +183,10 @@ def main(params):
                 cur_t += 1
             print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
                                                                         cur_t,
-                                                                        lb,
+                                                                        np.mean(lb),
                                                                         rl,
                                                                         ))
-            print("Annealing coefficient: {} KLD: {}".format(ann, kl))
+            print("Annealing coefficient: {} KLD: {}".format(ann, np.mean(kl)))
             val_vlb, val_rec = [], []
             for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
                 use_obj_vectors=params.use_c_v):
@@ -185,7 +195,8 @@ def main(params):
                         ann_inputs_dec: captions_batch[0],
                         ann_lengths: cl_batch,
                         anneal: cur_t}
-                if params.use_c_v:
+                if params.use_c_v or (
+                    params.prior == 'GMM' or params.prior == 'AG'):
                     feed.update({c_i: c_v[:, 1:]})
                 kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
                                       feed_dict=feed)
@@ -212,7 +223,8 @@ def main(params):
         acc, caps = [], []
         for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
             get_image_ids=True, use_obj_vectors=params.use_c_v):
-            if params.use_c_v:
+            if params.use_c_v or (
+                params.prior == 'GMM' or params.prior == 'AG'):
                 # 0 element doesnt matter
                 c_v = c_v[:, 1:]
             if params.sample_gen == 'beam_search':

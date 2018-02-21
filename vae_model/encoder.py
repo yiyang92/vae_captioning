@@ -65,13 +65,13 @@ class Encoder():
                                          activation=None)
             # define latent variable`s Stochastic Tensor
             # add mu_k, sigma_k, CVAe ag-cvae
+            tm_list = [] # means
+            tl_list = [] # variances
             if self.params.prior == 'GMM':
-                # TODO: finish implementation
                 cluster = tf.squeeze(tf.multinomial(self.c_i_ph, 1))
                 rng = tf.squeeze(tf.range(tf.shape(self.c_i_ph)[0]))
                 cluster = tf.stack([rng,
                                     tf.cast(cluster, tf.int32)], 1)
-                tm_list, tv_list = [], []
                 for i in range(90):
                     with tf.variable_scope("gmm_ll_{}".format(i)):
                         lz_mean = layers.dense(inputs=final_state,
@@ -79,19 +79,17 @@ class Encoder():
                         lz_logstd = layers.dense(inputs=final_state,
                                                  units=self.params.latent_size)
                         tm_list.append(tf.expand_dims(lz_mean, 1))
-                        tv_list.append(tf.expand_dims(lz_logstd, 1))
+                        tl_list.append(tf.expand_dims(lz_logstd, 1))
                 # [batch_size, 90, z_dim]
                 tm_list = tf.concat(tm_list, 1)
-                tv_list = tf.concat(tv_list, 1)
+                tl_list = tf.concat(tl_list, 1)
                 lz_mean = tf.gather_nd(tm_list, cluster)
-                lz_logstd = tf.gather_nd(tv_list, cluster)
+                lz_logstd = tf.gather_nd(tl_list, cluster)
 
             if self.params.prior == 'AG':
                 #clusters = tf.argmax(self.c_i_ph, 1)
                 # [batch_size, 150]?
                 # ck*N(mu, sigma)
-                tm_list = []
-                tv_list = []
                 for i in range(90):
                     with tf.variable_scope("gmm_ll_{}".format(i)):
                         lz_mean = layers.dense(inputs=final_state,
@@ -99,17 +97,17 @@ class Encoder():
                         lz_logstd = layers.dense(inputs=final_state,
                                                  units=self.params.latent_size)
                         tm_list.append(tf.expand_dims(lz_mean, 1))
-                        tv_list.append(tf.expand_dims(lz_logstd, 1))
+                        tl_list.append(tf.expand_dims(lz_logstd, 1))
                 # [batch_size, 90, 150]
                 # ob_vector [batch_size, 90]
                 # need [batch_size, 150]
-                lz_mean = tf.concat(tm_list, 1)
-                lz_logstd = tf.concat(tv_list, 1)
+                tm_list = tf.concat(tm_list, 1)
+                tl_list = tf.concat(tl_list, 1)
                 c_i_exp = tf.expand_dims(self.c_i_ph, 1)
-                lz_mean = tf.squeeze(tf.matmul(c_i_exp, lz_mean), 1)
-                lz_logstd = tf.squeeze(tf.matmul(c_i_exp, lz_logstd), 1)
+                lz_mean = tf.squeeze(tf.matmul(c_i_exp, tm_list), 1)
+                lz_logstd = tf.squeeze(tf.matmul(c_i_exp, tl_list), 1)
                 # debug
                 #print(lz_mean)
             z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
-        return z
+        return z, tm_list, tl_list
