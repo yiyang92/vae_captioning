@@ -66,7 +66,7 @@ def main(params):
         def init_clusters(num_clusters):
             # initialize sigma as constant, mu drawn randomly
             z_size = params.latent_size
-            c_sigma = tf.constant(0.1)
+            c_sigma = tf.sqrt(tf.constant(0.1))
             c_means = tf.random_normal([num_clusters,
                                         z_size], mean=0.0, stddev=1.0)
             return c_means, c_sigma
@@ -88,12 +88,14 @@ def main(params):
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'AG':
             c_means, c_sigma = init_clusters(90)
-            kld = -(tf.log(
-                c_sigma) - tf.log(qz.distribution.std) + (
-                    tf.log(qz.distribution.std**2 + tf.norm(
+            kld_clusters = 1 + tf.log(
+                qz.distribution.std + 0.0001) -  tf.log(
+                    c_sigma + 0.0001) - (tf.square(
                         qz.distribution.mean - tf.matmul(
-                            tf.squeeze(c_i), c_means))) - tf.log(
-                            2*qz.distribution.std**2)) - 1/2)
+                            tf.squeeze(c_i), c_means)) + tf.square(
+                            qz.distribution.std))/(
+                                tf.square(c_sigma)+0.0000001)
+            kld = -0.5 * tf.reduce_sum(kld_clusters, 1)
     with tf.variable_scope("decoder"):
         if params.no_encoder:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({})
@@ -120,10 +122,8 @@ def main(params):
         (tf.to_float(anneal) - 1000 * params.ann_param)/1000) + 1)/2
     # overall loss reconstruction loss - kl_regularization
     if not params.no_encoder:
-        # tf.reduce_mean(tf.to_float(ann_lengths)) for numerical stability
-        lower_bound = tf.reduce_mean(
-            tf.to_float(ann_lengths)) * rec_loss + tf.multiply(
-                tf.to_float(annealing), tf.to_float(kld))
+        lower_bound = rec_loss + tf.multiply(
+                tf.to_float(annealing), tf.to_float(kld))/10
     else:
         lower_bound = rec_loss
         kld = tf.constant(0.0)
@@ -147,6 +147,11 @@ def main(params):
     elif params.optimizer == 'Adam':
         optimize = tf.train.AdamOptimizer(
             params.learning_rate).apply_gradients(grads_vars)
+    elif params.optimizer == 'Momentum':
+        momentum = 0.90
+        optimize = tf.train.MomentumOptimizer(learning_rate_decay,
+                                              momentum).apply_gradients(
+                                                  grads_vars)
     # model restore
     saver = tf.train.Saver(tf.trainable_variables())
     # m_builder = tf.saved_model.builder.SavedModelBuilder('./saved_model')

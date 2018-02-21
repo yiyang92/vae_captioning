@@ -26,7 +26,7 @@ class Parameters():
     gen_z_samples = 20 # according to paper (Diverse cap)
     ann_param = 5 # KL-divergence component weight in objective function
     dec_lstm_drop = 1.0
-    optimizer = 'SGD' # SGD or Adam
+    optimizer = 'SGD' # SGD, Adam, Momentum
     # restore?
     restore = False
     # technical parameters
@@ -87,7 +87,8 @@ class Parameters():
         parser.add_argument('--checkpoint', default=self.checkpoint,
                             help="specify checkpoint name, default=last_run")
         parser.add_argument('--optimizer', default=self.optimizer,
-                            choices=['SGD', 'Adam'], help="SGD or Adam")
+                            choices=['SGD', 'Adam', 'Momentum'],
+                            help="SGD or Adam")
         parser.add_argument('--c_v', default=False,
                             help="Whether to use cluster vectors",
                             action="store_true")
@@ -96,6 +97,9 @@ class Parameters():
         parser.add_argument('--save_params',
                             help="save params class into pickle",
                             action="store_true")
+        parser.add_argument('--prior', default=self.prior,
+                            choices=['GMM', 'AG', 'Normal'],
+                            help="set prior (GMM, AG, Normal)")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -120,6 +124,7 @@ class Parameters():
         self.batch_size = int(args.bs)
         self.std = float(args.std)
         self.save_params = args.save_params
+        self.prior = args.prior
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

@@ -69,8 +69,8 @@ class Encoder():
             tl_list = [] # variances
             if self.params.prior == 'GMM':
                 cluster = tf.squeeze(tf.multinomial(self.c_i_ph, 1))
-                rng = tf.squeeze(tf.range(tf.shape(self.c_i_ph)[0]))
-                cluster = tf.stack([rng,
+                indices = tf.squeeze(tf.range(tf.shape(self.c_i_ph)[0]))
+                cluster = tf.stack([indices,
                                     tf.cast(cluster, tf.int32)], 1)
                 for i in range(90):
                     with tf.variable_scope("gmm_ll_{}".format(i)):
