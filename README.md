@@ -1,4 +1,4 @@
-# Use Variational Auto-Encoder to generate capions
+# Use Variational Auto-Encoder to generate captions
 ## Overview
  Tensorflow Implementation of [Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space, (Nips)](https://papers.nips.cc/paper/7158-diverse-and-accurate-image-description-using-a-variational-auto-encoder-with-an-additive-gaussian-encoding-space.pdf)
 
