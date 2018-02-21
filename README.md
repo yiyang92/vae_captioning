@@ -1,4 +1,5 @@
 # Use Variational Auto-Encoder to generate captions
+
 ## Overview
  Tensorflow Implementation of [Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space, (Nips)](https://papers.nips.cc/paper/7158-diverse-and-accurate-image-description-using-a-variational-auto-encoder-with-an-additive-gaussian-encoding-space.pdf)
 
@@ -13,6 +14,10 @@ python main.py --gpu 'your gpu'
 ### Parameters
 Parameters can be set directly in in utils/parameters.py file.
 (or specify through command line parameters).
+For example, if you want to train AG-CVAE model, which use cluster vectors as input to encoder and decoder, you can call:
+```shell=
+python main.py --gpu 0 --embed_dim 256 --dec_hid 512 --epochs 50 --temperature 0.6 --gen_name ag --dec_drop 0.7 --dec_lstm_drop 0.7 --lr 0.001 --checkpoint ag_cv_test1 --coco_dir "/home/username/mscoco/coco/" --optimizer Adam --sample_gen greedy --c_v
+```
 
 ### Generation
 For list of required parameters:
