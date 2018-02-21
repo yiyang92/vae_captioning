@@ -1,6 +1,6 @@
 # Use Variational Auto-Encoder to generate capions
 ## Overview
- Tensorflow Implementation of [Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space, (Nips)] (https://papers.nips.cc/paper/7158-diverse-and-accurate-image-description-using-a-variational-auto-encoder-with-an-additive-gaussian-encoding-space.pdf)
+ Tensorflow Implementation of [Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space, (Nips)](https://papers.nips.cc/paper/7158-diverse-and-accurate-image-description-using-a-variational-auto-encoder-with-an-additive-gaussian-encoding-space.pdf)
 
 
 ## Usage
@@ -39,7 +39,7 @@ https://yadi.sk/d/TCyXUmKk3SPVtc
   tensorflow object detection API and faster-RCNN)
 - beam search (implemented)
 - AG-CVAE (partially implemented)
-- GMM-CVAE (in progress)
+- GMM-CVAE (partially implemented)
 - Caption generation for new photos (partially implemented, will need to automate cluster vectors generation process)
 - fine_tune for better result (in progress)
 
