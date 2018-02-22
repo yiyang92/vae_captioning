@@ -66,9 +66,19 @@ def main(params):
         def init_clusters(num_clusters):
             # initialize sigma as constant, mu drawn randomly
             z_size = params.latent_size
-            c_sigma = tf.sqrt(tf.constant(0.1))
-            c_means = tf.random_normal([num_clusters,
-                                        z_size], mean=0.0, stddev=1.0)
+            c_sigma = tf.constant(0.1)
+            cluster_mu_matrix = []
+            for id_cluster in range(params.num_clusters):
+                with tf.variable_scope("cl_init_mean_{}".format(id_cluster)):
+                    # cluster_item = tf.Variable(
+                    #     initial_value=2*tf.random_uniform([1, params.latent_size])\
+                    #      - 1, trainable=False) # used to generate initial means
+                    cluster_item = 2*np.random.random_sample(
+                        (1, params.latent_size)) - 1
+                    cluster_item = cluster_item/(tf.sqrt(
+                        tf.reduce_sum(cluster_item**2)))
+                    cluster_mu_matrix.append(tf.cast(cluster_item, tf.float32))
+            c_means = tf.concat(cluster_mu_matrix, 0)
             return c_means, c_sigma
         if params.prior == 'Normal':
             # kld between normal distributions KL(q, p), see Kingma et.al
@@ -88,13 +98,11 @@ def main(params):
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'AG':
             c_means, c_sigma = init_clusters(90)
-            kld_clusters = 1 + tf.log(
-                qz.distribution.std + 0.0001) -  tf.log(
-                    c_sigma + 0.0001) - (tf.square(
-                        qz.distribution.mean - tf.matmul(
-                            tf.squeeze(c_i), c_means)) + tf.square(
-                            qz.distribution.std))/(
-                                tf.square(c_sigma)+0.0000001)
+            kld_clusters = 1 + tf.log(qz.distribution.std+ 0.0001)\
+             -  tf.log(c_sigma + 0.0001) - (
+                 tf.square(qz.distribution.mean - tf.matmul(
+                     tf.squeeze(c_i), c_means)) + tf.square(
+                         qz.distribution.std))/(tf.square(c_sigma)+0.0000001)
             kld = -0.5 * tf.reduce_sum(kld_clusters, 1)
     with tf.variable_scope("decoder"):
         if params.no_encoder:

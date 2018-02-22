@@ -1,6 +1,7 @@
 class Parameters():
     # general parameters
     latent_size = 150
+    num_clusters = 90 # 80 in mscoco, + 10 as mscoco objeect ids from 0-90
     num_epochs = 20
     learning_rate = 0.001
     batch_size = 128 # for no encoder use bs=30 and SGD with lr 2

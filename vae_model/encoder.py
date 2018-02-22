@@ -91,7 +91,7 @@ class Encoder():
                 # [batch_size, 150]?
                 # ck*N(mu, sigma)
                 for i in range(90):
-                    with tf.variable_scope("gmm_ll_{}".format(i)):
+                    with tf.variable_scope("ag_ll_{}".format(i)):
                         lz_mean = layers.dense(inputs=final_state,
                                                units=self.params.latent_size)
                         lz_logstd = layers.dense(inputs=final_state,
