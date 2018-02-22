@@ -42,7 +42,7 @@ https://yadi.sk/d/TCyXUmKk3SPVtc
 - cluster vectors (impemented, vectors for test set generated using
   tensorflow object detection API and faster-RCNN)
 - beam search (implemented)
-- AG-CVAE (implemented)
+- AG-CVAE (partially implemented)
 - GMM-CVAE (implemented)
 - Caption generation for new photos (partially implemented, will need to automate cluster vectors generation process)
 - fine_tune for better result (in progress)
