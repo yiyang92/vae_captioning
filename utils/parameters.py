@@ -1,5 +1,6 @@
 class Parameters():
     # general parameters
+    fine_tune = False
     latent_size = 150
     num_clusters = 90 # 80 in mscoco, + 10 as mscoco objeect ids from 0-90
     num_epochs = 20
@@ -101,6 +102,9 @@ class Parameters():
         parser.add_argument('--prior', default=self.prior,
                             choices=['GMM', 'AG', 'Normal'],
                             help="set prior (GMM, AG, Normal)")
+        parser.add_argument('--fine_tune',
+                            help="fine_tune",
+                            action="store_true")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -126,6 +130,7 @@ class Parameters():
         self.std = float(args.std)
         self.save_params = args.save_params
         self.prior = args.prior
+        self.fine_tune = args.fine_tune
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

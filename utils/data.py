@@ -29,21 +29,20 @@ class Data():
         self.captions_tr.index_captions(self.dictionary.word2idx)
         self.captions_val.index_captions(self.dictionary.word2idx)
         self.train_feature_dict = None
-        self.ex_features_model = None
         self.num_examples = self.captions_tr.num_captions
         self.repartiton = repartiton
         self.gen_val_cap = gen_val_cap
         if repartiton and not gen_val_cap:
             raise ValueError("If using repartition must specify how many val "
                              "images to use")
+        assert ex_features_model != None, "Specify tf.contrib.keras model"
+        self.ex_features_model = ex_features_model
         if extract_features:
-            assert ex_features_model != None, "Specify tf.contrib.keras model"
             # prepare image features or load them from pickle file
-            self.train_feature_dict = self.extract_features(self.train_dir,
-                                                            ex_features_model)
-            self.ex_features_model = ex_features_model
+            self.train_feature_dict = self.extract_features_from_dir(self.train_dir,
+                                                                     ex_features_model)
 
-    def load_train_data_generator(self, batch_size):
+    def load_train_data_generator(self, batch_size, fine_tune=False):
         """
         Args:
             batch_size: batch size
@@ -55,20 +54,27 @@ class Data():
         val_cap, valid_feature_dict = None, None
         if self.repartiton:
             val_cap = self.captions_val
-            valid_feature_dict = self.extract_features(self.valid_dir,
+            valid_feature_dict = self.extract_features_from_dir(self.valid_dir,
                                                    self.ex_features_model)
-        self.train_batch_gen = Batch_Generator(self.train_dir,
-                                              self.train_cap_json,
-                                              self.captions_tr,
-                                              batch_size,
-                                              feature_dict=feature_dict)
+        if fine_tune or not feature_dict:
+            self.train_batch_gen = Batch_Generator(self.train_dir,
+                                                  self.train_cap_json,
+                                                  self.captions_tr,
+                                                  batch_size,
+                                                  feature_dict=None)
+        else:
+            self.train_batch_gen = Batch_Generator(self.train_dir,
+                                                  self.train_cap_json,
+                                                  self.captions_tr,
+                                                  batch_size,
+                                                  feature_dict=feature_dict)
         if self.repartiton:
             self.train_batch_gen.repartiton(val_cap,
                                             valid_feature_dict,
                                             self.gen_val_cap)
         return self.train_batch_gen
 
-    def extract_features(self, data_dir, model=None, save_pickle=True,
+    def extract_features_from_dir(self, data_dir, model=None, save_pickle=True,
                          im_shape=(224, 224)):
         """
         Args:
@@ -107,13 +113,44 @@ class Data():
                     pickle.dump(feature_dict, wf)
         return feature_dict
 
-    def get_valid_data(self, val_batch_size=None, val_tr_unused=None):
+    def extract_features(self, image, im_shape=(224, 224, 3)):
+        """
+        Args:
+            image: input image
+        Returns:
+            image features
+        """
+        image = np.resize(image, im_shape)
+        image = np.expand_dims(image, axis=0)
+        image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
+        return self.ex_features_model.predict(image)
+
+    @staticmethod
+    def preprocess_images(images, shape=(224, 224, 3)):
+        """Preprocess for VGG16
+        Args:
+            images: np.array of shape [batch_size, None, None, 3]
+        Returns:
+            np.array of shape [batch_size, 224, 224, 3]
+        """
+        im_list = []
+        for image in images:
+            image = np.resize(image, shape)
+            image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
+            im_list.append(image)
+        return np.stack(im_list)
+
+    def get_valid_data(self, val_batch_size=None, val_tr_unused=None,
+                       pretrained=True):
         """
         Get validation data, used Batch_Generator() without specifying batch
         size parameter (meaning will generate all data at once) for convenience.
         """
-        valid_feature_dict = self.extract_features(self.valid_dir,
-                                                   self.ex_features_model)
+        if pretrained:
+            valid_feature_dict = self.extract_features_from_dir(self.valid_dir,
+                                                       self.ex_features_model)
+        else:
+            valid_feature_dict = None
         self.valid_batch_gen = Batch_Generator(self.valid_dir,
                                               self.valid_cap_json,
                                               self.captions_val,
@@ -123,16 +160,20 @@ class Data():
                                               val_tr_unused=val_tr_unused)
         return self.valid_batch_gen
 
-    def get_test_data(self, test_batch_size=None):
+    def get_test_data(self, test_batch_size=None, pretrained=True):
         """
         Get test data images, evaluation is done on a test server.
         Args:
             test_batch_size: set size of generated batches
+            pretrained: whether or not use presaved imagenet features
         Returns:
             Test batch generator
         """
-        test_feature_dict = self.extract_features(self.test_dir,
-                                                  self.ex_features_model)
+        if pretrained:
+            test_feature_dict = self.extract_features_from_dir(self.test_dir,
+                                                      self.ex_features_model)
+        else:
+            test_feature_dict = None
         self.train_batch_gen = Batch_Generator(self.test_dir,
                                                train_cap_json=self.test_cap_json,
                                                batch_size=test_batch_size,

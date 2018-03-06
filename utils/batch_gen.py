@@ -88,23 +88,27 @@ class Batch_Generator():
         Returns:
             images, cl_v: images and cluster vectors
         """
-        if self.feature_dict:
-            images = []
-            cl_v = []
-            for imn in imn_batch:
+        images, cl_v = [], []
+        for imn in imn_batch:
+            if not c_v and not self.feature_dict:
+                break
+            def get_features(imn):
                 try:
                     image = self.feature_dict[imn.split('/')[-1]]
                 except:
                     image = self.val_feature_dict[imn.split('/')[-1]]
-                if c_v:
-                    # TODO: avoid this by better preprocessing
-                    try:
-                        vector = c_v[imn.split('/')[-1]]
-                    except:
-                        vector = np.zeros(91)
-                    cl_v.append(vector)
                 images.append(image)
-            cl_v = np.array(cl_v)
+            if c_v:
+                # TODO: avoid this by better preprocessing
+                try:
+                    vector = c_v[imn.split('/')[-1]]
+                except:
+                    vector = np.zeros(91)
+                cl_v.append(vector)
+            if self.feature_dict:
+                get_features(imn)
+        cl_v = np.array(cl_v)
+        if self.feature_dict:
             images = np.squeeze(np.array(images), 1)
         else:
             images = self._get_images(imn_batch)
