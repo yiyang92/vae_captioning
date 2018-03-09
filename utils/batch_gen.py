@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import json
 import pickle
+import tensorflow as tf
 
 from random import shuffle
 from utils.captions import Captions
@@ -99,7 +100,6 @@ class Batch_Generator():
                     image = self.val_feature_dict[imn.split('/')[-1]]
                 images.append(image)
             if c_v:
-                # TODO: avoid this by better preprocessing
                 try:
                     vector = c_v[imn.split('/')[-1]]
                 except:
@@ -201,11 +201,21 @@ class Batch_Generator():
             yield images, image_ids, cl_v
 
     def _get_images(self, names):
+        """Preprocess for VGG16
+        Args:
+            images: np.array of shape [batch_size, None, None, 3]
+        Returns:
+            np.array of shape [batch_size, 224, 224, 3]
+        """
         images = []
         for name in names:
             # image preprocessing
-            image = cv2.cvtColor(cv2.imread(name), cv2.COLOR_BGR2RGB)
-            image = self._preprocess_image(image)
+            #image = cv2.cvtColor(cv2.imread(name), cv2.COLOR_BGR2RGB)
+            #image = self._preprocess_image(image)
+            image = tf.contrib.keras.preprocessing.image.load_img(
+                name, target_size=(224, 224))
+            image = tf.contrib.keras.preprocessing.image.img_to_array(image)
+            image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
             images.append(image)
         return np.stack(images)
 
@@ -222,10 +232,11 @@ class Batch_Generator():
         image = cv2.resize(image, self.im_shape)
         return image
 
-    def _form_captions_batch(self, imn_batch):
+    def _form_captions_batch(self, imn_batch, random_select=True):
         """
         Args:
             imn_batch: image file names in the batch
+            random_select: every time just choose random captions, not add all
         Returns :
             list of np arrays [[batch_size, caption], [lengths]], where lengths have
             batch_size shape
@@ -234,16 +245,26 @@ class Batch_Generator():
         # calculate length of every sequence and make a list
         # randomly choose caption for the current iteration
         # use static array for efficiency
-        labels_captions_list = [None] * len(imn_batch)
-        input_captions_list = [None] * len(imn_batch)
-        lengths = np.zeros(len(imn_batch))
+        if random_select:
+            labels_captions_list = [None] * len(imn_batch)
+            input_captions_list = [None] * len(imn_batch)
+            lengths = np.zeros(len(imn_batch))
+        else:
+            # TODO: finish
+            num_captions = 5
+            labels_captions_list = [None] * len(imn_batch) * num_captions
+            input_captions_list = [None] * len(imn_batch) * num_captions
+            lengths = np.zeros(len(imn_batch)) * num_captions
         idx = 0
         for fn in imn_batch:
             # TODO: improve error handling when file is not correct
             fn = fn.split('/')[-1]
             try:
-                caption = self.captions[fn][np.random.randint(
-                    len(self.captions[fn]))]
+                if random_select:
+                    caption = self.captions[fn][np.random.randint(
+                        len(self.captions[fn]))]
+                else:
+                    caption = self.captions[fn]
             except:
                 # validation captions, maybe find better way to process?
                 caption = self.val_captions[fn][np.random.randint(

@@ -19,7 +19,7 @@ class Parameters():
     encoder_hidden = 512
     keep_rate = 1.0
     # decoder
-    std = 0.1 # decodertest time N(0, std)
+    std = 0.1 # decoder test time N(0, std)
     decoder_hidden = 512
     decoder_rnn_layers = 1
     dec_keep_rate = 1.0
@@ -43,6 +43,7 @@ class Parameters():
     use_c_v = False
     gen_val_captions = 4000 # set -1 to generate captions on a full dataset
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
+    max_checkpoints_to_keep = 5
     def parse_args(self):
         import argparse
         import os

@@ -1,11 +1,11 @@
 import os
 import json
 import numpy as np
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # ERROR
 import tensorflow as tf
 import zhusuan as zs
 from tensorflow import layers
 from tensorflow.python.util.nest import flatten
-
 # import utils
 from utils.data import Data
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
@@ -28,7 +28,10 @@ def main(params):
     data = Data(coco_dir, True, model, repartiton=repartiton,
                 gen_val_cap=params.gen_val_captions)
     # load batch generator, repartiton to use more val set images in train
-    batch_gen = data.load_train_data_generator(params.batch_size,
+    gen_batch_size = params.batch_size
+    if params.fine_tune:
+        gen_batch_size = 3000
+    batch_gen = data.load_train_data_generator(gen_batch_size,
                                                params.fine_tune)
     # whether use presaved pretrained imagenet features (saved in pickle)
     # feature extractor after fine_tune will be saved in tf checkpoint
@@ -43,15 +46,33 @@ def main(params):
     ann_inputs_enc = tf.placeholder(tf.int32, [None, None])
     ann_inputs_dec = tf.placeholder(tf.int32, [None, None])
     ann_lengths = tf.placeholder(tf.int32, [None])
-
     if params.fine_tune:
         # if fine_tune dont just load images_fv
         image_f_inputs = tf.placeholder(tf.float32, [None, 224, 224, 3])
-        features = model(image_f_inputs)
+
     else:
         # use prepared image features [batch_size, 4096] (fc2)
         image_f_inputs = tf.placeholder(tf.float32, [None, 4096])
-        features = image_f_inputs
+        features = image_batch
+    if params.use_c_v or (
+        params.prior == 'GMM' or params.prior == 'AG'):
+        c_i = tf.placeholder(tf.float32, [None, 90])
+    dataset = tf.data.Dataset.from_tensor_slices((image_f_inputs,
+                                               ann_inputs_enc,
+                                               ann_inputs_dec,
+                                               ann_lengths,
+                                               c_i)).repeat(1).batch(
+                                                   params.batch_size)
+    iterator = tf.data.Iterator.from_structure(dataset.output_types,
+                                   dataset.output_shapes)
+    training_init_op = iterator.make_initializer(dataset)
+    next_element = iterator.get_next()
+    image_batch, cap_enc, cap_dec, cap_len, cl_vectors = next_element
+    # features
+    if params.fine_tune:
+        features = model(image_batch)
+    else:
+        features = image_batch
     # dictionary
     cap_dict = data.dictionary
     params.vocab_size = cap_dict.vocab_size
@@ -59,17 +80,16 @@ def main(params):
     images_fv = layers.dense(features, params.embed_size, name='imf_emb')
     # encoder, input fv and ...<BOS>,get z
     if not params.no_encoder:
-        encoder = Encoder(images_fv, ann_inputs_enc, ann_lengths, params)
+        encoder = Encoder(images_fv, cap_enc, cap_len, params)
     # decoder, input_fv, get x, x_logits (for generation)
-    decoder = Decoder(images_fv, ann_inputs_dec, ann_lengths, params,
+    decoder = Decoder(images_fv, cap_dec, cap_len, params,
                       cap_dict)
     if params.use_c_v or (
         params.prior == 'GMM' or params.prior == 'AG'):
         # cluster vectors from "Diverse and Accurate Image Description.." paper.
         # 80 is number of classes, for now hardcoded
         # for GMM-CVAE must be specified
-        c_i = tf.placeholder(tf.float32, [None, 90])
-        c_i_emb = layers.dense(c_i, params.embed_size, name='cv_emb')
+        c_i_emb = layers.dense(cl_vectors, params.embed_size, name='cv_emb')
         # map cluster vectors into embedding space
         decoder.c_i = c_i_emb
         decoder.c_i_ph = c_i
@@ -125,19 +145,19 @@ def main(params):
         else:
             dec_model, x_logits, shpe, _ = decoder.px_z_fi({'z': qz})
     # calculate rec. loss, mask padded part
-    labels_flat = tf.reshape(ann_inputs_enc, [-1])
+    labels_flat = tf.reshape(cap_enc, [-1])
     # debugging print
     prnt1 = tf.Print(labels_flat, [shpe[0], tf.shape(labels_flat), shpe[1],
                                    shpe[2]],
                      message="shapes")
     ce_loss_padded = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        logits=x_logits,labels=labels_flat)
+        logits=x_logits, labels=labels_flat)
     loss_mask = tf.sign(tf.to_float(labels_flat))
     masked_loss = loss_mask * ce_loss_padded
     # restore original shape
-    masked_loss = tf.reshape(masked_loss, tf.shape(ann_inputs_enc))
+    masked_loss = tf.reshape(masked_loss, tf.shape(cap_enc))
     mean_loss_by_example = tf.reduce_sum(
-        masked_loss, 1) / tf.to_float(ann_lengths)
+        masked_loss, 1) / tf.to_float(cap_len)
     rec_loss = tf.reduce_mean(mean_loss_by_example)
     # kld weight annealing
     anneal = tf.placeholder_with_default(0, [])
@@ -179,7 +199,8 @@ def main(params):
                                               momentum).apply_gradients(
                                                   grads_vars)
     # model restore
-    saver = tf.train.Saver(tf.trainable_variables())
+    saver = tf.train.Saver(tf.trainable_variables(),
+                           max_to_keep=params.max_checkpoints_to_keep)
     # m_builder = tf.saved_model.builder.SavedModelBuilder('./saved_model')
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -193,11 +214,10 @@ def main(params):
             saver.restore(sess, "./checkpoints/{}.ckpt".format(
                 params.checkpoint))
         cur_t = 0
+        params.inference = False
         for e in range(params.num_epochs):
             for f_images_batch, captions_batch, cl_batch, c_v in batch_gen.next_batch(
                 use_obj_vectors=params.use_c_v):
-                if params.fine_tune:
-                    f_images_batch = data.preprocess_images(f_images_batch)
                 feed = {image_f_inputs: f_images_batch,
                         ann_inputs_enc: captions_batch[1],
                         ann_inputs_dec: captions_batch[0],
@@ -207,13 +227,21 @@ def main(params):
                         global_step: cur_t}
                 if params.use_c_v:
                     feed.update({c_i: c_v[:, 1:]})
-                # debuging print
-                if cur_t == 0:
-                    _ = sess.run(prnt1, feed_dict=feed)
-                kl, rl, lb, _, ann = sess.run([kld, rec_loss, lower_bound,
-                                               optimize, annealing],
-                                              feed_dict=feed)
-                cur_t += 1
+                #debuging print
+                sess.run(training_init_op, feed)
+                while True:
+                    try:
+                        kl, rl, lb, _, ann = sess.run([kld, rec_loss, lower_bound,
+                                                       optimize, annealing],
+                                                      feed_dict=feed)
+                        if cur_t % 500 == 0:
+                            print("Epoch: {} Iteration: {} VLB: {} "
+                                  "Rec Loss: {}".format(e,
+                                                        cur_t,
+                                                        np.mean(lb),rl,))
+                        cur_t += 1
+                    except tf.errors.OutOfRangeError:
+                        break
             print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
                                                                         cur_t,
                                                                         np.mean(lb),
@@ -224,8 +252,6 @@ def main(params):
             def validate():
                 for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
                     use_obj_vectors=params.use_c_v):
-                    if params.fine_tune:
-                        f_images_batch = data.preprocess_images(f_images_batch)
                     feed = {image_f_inputs: f_images_batch,
                             ann_inputs_enc: captions_batch[1],
                             ann_inputs_dec: captions_batch[0],
@@ -234,16 +260,27 @@ def main(params):
                     if params.use_c_v or (
                         params.prior == 'GMM' or params.prior == 'AG'):
                         feed.update({c_i: c_v[:, 1:]})
-                    kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
-                                          feed_dict=feed)
+                    sess.run(training_init_op, feed)
+                    while True:
+                        try:
+                            kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
+                                                  feed_dict=feed)
+                            if cur_t % 500 == 0:
+                                print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
+                                                                               np.mean(val_rec)))
+                                print("-----------------------------------------------")
+                        except tf.errors.OutOfRangeError:
+                            break
                     val_vlb.append(lb)
                     val_rec.append(rl)
                 print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
                                                                np.mean(val_rec)))
                 print("-----------------------------------------------")
             if params.fine_tune:
-                if e % 10 == 0:
-                    validate()
+                validate()
+                save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
+                    params.checkpoint))
+                print("Model saved in file: %s" % save_path)
             else:
                 validate()
             # anneal lr

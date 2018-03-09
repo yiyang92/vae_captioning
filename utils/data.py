@@ -135,7 +135,7 @@ class Data():
         """
         im_list = []
         for image in images:
-            image = np.resize(image, shape)
+            #image = np.resize(image, shape)
             image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
             im_list.append(image)
         return np.stack(im_list)
