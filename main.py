@@ -229,11 +229,10 @@ def main(params):
                 params.checkpoint))
         for e in range(params.num_epochs):
             gs = tf.train.global_step(sess, global_step)
+            gs_epoch = 0
             while True:
-                def stop_condition(gs):
-                    if e > 0:
-                        gs -= gs*e
-                    num_examples = gs * params.batch_size
+                def stop_condition():
+                    num_examples = gs_epoch * params.batch_size
                     if num_examples > params.num_ex_per_epoch:
                         return True
                     return False
@@ -257,6 +256,7 @@ def main(params):
                                                            lower_bound,
                                                            optimize, annealing],
                                                           feed)
+                            gs_epoch += 1
                             if gs % 500 == 0:
                                 print("Epoch: {} Iteration: {} VLB: {} "
                                       "Rec Loss: {}".format(e,
@@ -267,9 +267,9 @@ def main(params):
                                           "{} KLD: {}".format(ann, np.mean(kl)))
                         except tf.errors.OutOfRangeError:
                             break
-                    if stop_condition(gs):
+                    if stop_condition():
                         break
-                if stop_condition(gs):
+                if stop_condition():
                     break
             print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
                                                                         gs,
