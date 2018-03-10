@@ -45,7 +45,7 @@ class Parameters():
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
     mode = 'training' # training or inference
-    num_ex_per_epoch = 586363 # used same as im2txt
+    num_ex_per_epoch = 586363 # 586363 for im2txt
     def parse_args(self):
         import argparse
         import os
