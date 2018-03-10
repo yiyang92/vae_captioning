@@ -207,6 +207,7 @@ class Batch_Generator():
         Returns:
             np.array of shape [batch_size, 224, 224, 3]
         """
+        # TODO: try save preprocessed images and load during training
         images = []
         for name in names:
             # image preprocessing

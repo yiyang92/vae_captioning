@@ -44,6 +44,8 @@ class Parameters():
     gen_val_captions = 4000 # set -1 to generate captions on a full dataset
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
+    mode = 'training' # training or inference
+    num_ex_per_epoch = 586363 # used same as im2txt
     def parse_args(self):
         import argparse
         import os
@@ -106,6 +108,9 @@ class Parameters():
         parser.add_argument('--fine_tune',
                             help="fine_tune",
                             action="store_true")
+        parser.add_argument('--mode', default=self.mode,
+                            choices=['training', 'inference'],
+                            help="specify training or inference")
 
         args = parser.parse_args()
         self.learning_rate = float(args.lr)
@@ -132,6 +137,7 @@ class Parameters():
         self.save_params = args.save_params
         self.prior = args.prior
         self.fine_tune = args.fine_tune
+        self.mode = args.mode
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

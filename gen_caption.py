@@ -97,7 +97,8 @@ class Generator():
                 # 80 is number of classes, for now hardcoded
                 # for GMM-CVAE must be specified
                 c_i = tf.placeholder(tf.float32, [None, 90])
-                c_i_emb = tf.layers.dense(c_i, self.params.embed_size)
+                c_i_emb = tf.layers.dense(c_i, self.params.embed_size,
+                                          name='cv_emb')
                 # map cluster vectors into embedding space
                 decoder.c_i = c_i_emb
                 decoder.c_i_ph = c_i
