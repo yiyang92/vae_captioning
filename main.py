@@ -10,6 +10,7 @@ from tensorflow.python.util.nest import flatten
 from utils.data import Data
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 from utils.parameters import Parameters
+from utils.image_embeddings import vgg16
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
 
@@ -30,7 +31,7 @@ def main(params):
     # load batch generator, repartiton to use more val set images in train
     gen_batch_size = params.batch_size
     if params.fine_tune:
-        gen_batch_size = 4000
+        gen_batch_size = 5000
     batch_gen = data.load_train_data_generator(gen_batch_size,
                                                params.fine_tune)
     # whether use presaved pretrained imagenet features (saved in pickle)
@@ -63,7 +64,8 @@ def main(params):
                                                    ann_inputs_dec,
                                                    ann_lengths,
                                                    c_i))
-        dataset = dataset.repeat(1)
+        if params.fine_tune:
+            dataset = dataset.repeat(params.repeat_every_load)
         dataset = dataset.batch(params.batch_size)
         dataset = dataset.shuffle(buffer_size=gen_batch_size)
         iterator = tf.data.Iterator.from_structure(dataset.output_types,
@@ -81,8 +83,15 @@ def main(params):
         image_batch, cap_enc, cap_dec, cap_len, cl_vectors = image_f_inputs,\
         ann_inputs_enc, ann_inputs_dec, ann_lengths, c_i
     # features, params.fine_tune stands for not using presaved imagenet weights
+    # here, used this dummy placeholder during fine_tune, will remove it in
+    # future releases, thats for saving image_net weights for futher usage
+    image_f_inputs2 = tf.placeholder_with_default(tf.zeros([0, 224, 224, 3]),
+                                                  shape=[None, 224, 224, 3])
     if params.fine_tune:
-        features = model(image_batch)
+        image_f_inputs2 = image_f_inputs
+    image_embeddings = vgg16(image_f_inputs2)
+    if params.fine_tune:
+        features = image_embeddings.fc2
     else:
         features = image_batch
     # dictionary
@@ -221,102 +230,108 @@ def main(params):
     with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
+        # if params.fine_tune:
+        image_embeddings.load_weights(params.image_net_weights_path, sess)
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
         if params.restore:
             print("Restoring from checkpoint")
             saver.restore(sess, "./checkpoints/{}.ckpt".format(
                 params.checkpoint))
-        for e in range(params.num_epochs):
-            gs = tf.train.global_step(sess, global_step)
-            gs_epoch = 0
-            while True:
-                def stop_condition():
-                    num_examples = gs_epoch * params.batch_size
-                    if num_examples > params.num_ex_per_epoch:
-                        return True
-                    return False
-                for f_images_batch,\
-                captions_batch, cl_batch, c_v in batch_gen.next_batch(
-                    use_obj_vectors=params.use_c_v):
-                    feed = {image_f_inputs: f_images_batch,
-                            ann_inputs_enc: captions_batch[1],
-                            ann_inputs_dec: captions_batch[0],
-                            ann_lengths: cl_batch,
-                            anneal: gs,
-                            learning_rate: params.learning_rate}
-                    if params.use_c_v:
-                        feed.update({c_i: c_v[:, 1:]})
-                    sess.run(training_init_op, feed)
-                    while True:
-                        try:
-                            gs = tf.train.global_step(sess, global_step)
-                            feed.update({anneal: gs})
-                            kl, rl, lb, _, ann = sess.run([kld, rec_loss,
-                                                           lower_bound,
-                                                           optimize, annealing],
-                                                          feed)
-                            gs_epoch += 1
-                            if gs % 500 == 0:
-                                print("Epoch: {} Iteration: {} VLB: {} "
-                                      "Rec Loss: {}".format(e,
-                                                            gs,
-                                                            np.mean(lb),rl))
-                                if not params.no_encoder:
-                                    print("Annealing coefficient:"
-                                          "{} KLD: {}".format(ann, np.mean(kl)))
-                        except tf.errors.OutOfRangeError:
+        summary_writer = tf.summary.FileWriter(params.LOG_DIR, sess.graph)
+        summary_writer.add_graph(sess.graph)
+        if params.mode == "training":
+            print(tf.trainable_variables())
+            for e in range(params.num_epochs):
+                gs = tf.train.global_step(sess, global_step)
+                gs_epoch = 0
+                while True:
+                    def stop_condition():
+                        num_examples = gs_epoch * params.batch_size
+                        if num_examples > params.num_ex_per_epoch:
+                            return True
+                        return False
+                    for f_images_batch,\
+                    captions_batch, cl_batch, c_v in batch_gen.next_batch(
+                        use_obj_vectors=params.use_c_v):
+                        feed = {image_f_inputs: f_images_batch,
+                                ann_inputs_enc: captions_batch[1],
+                                ann_inputs_dec: captions_batch[0],
+                                ann_lengths: cl_batch,
+                                anneal: gs,
+                                learning_rate: params.learning_rate}
+                        if params.use_c_v:
+                            feed.update({c_i: c_v[:, 1:]})
+                        sess.run(training_init_op, feed)
+                        while True:
+                            try:
+                                gs = tf.train.global_step(sess, global_step)
+                                feed.update({anneal: gs})
+                                kl, rl, lb, _, ann = sess.run([kld, rec_loss,
+                                                               lower_bound,
+                                                               optimize, annealing],
+                                                              feed)
+                                gs_epoch += 1
+                                if gs % 500 == 0:
+                                    print("Epoch: {} Iteration: {} VLB: {} "
+                                          "Rec Loss: {}".format(e,
+                                                                gs,
+                                                                np.mean(lb),rl))
+                                    if not params.no_encoder:
+                                        print("Annealing coefficient:"
+                                              "{} KLD: {}".format(ann, np.mean(kl)))
+                            except tf.errors.OutOfRangeError:
+                                break
+                        if stop_condition():
                             break
                     if stop_condition():
                         break
-                if stop_condition():
-                    break
-            print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
-                                                                        gs,
-                                                                        np.mean(lb),
-                                                                        rl,
-                                                                        ))
-            val_vlb, val_rec = [], []
-            def validate():
-                for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
-                    use_obj_vectors=params.use_c_v):
-                    gs = tf.train.global_step(sess, global_step)
-                    feed = {image_f_inputs: f_images_batch,
-                            ann_inputs_enc: captions_batch[1],
-                            ann_inputs_dec: captions_batch[0],
-                            ann_lengths: cl_batch,
-                            anneal: gs}
-                    if params.use_c_v or (
-                        params.prior == 'GMM' or params.prior == 'AG'):
-                        feed.update({c_i: c_v[:, 1:]})
-                    sess.run(training_init_op, feed)
-                    while True:
-                        try:
-                            kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
-                                                  feed_dict=feed)
-                        except tf.errors.OutOfRangeError:
-                            break
-                    val_vlb.append(lb)
-                    val_rec.append(rl)
-                print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
-                                                               np.mean(val_rec)))
-                print("-----------------------------------------------")
-            validate()
-            # save model
-            if params.mode == "training":
-                if not os.path.exists("./checkpoints"):
-                    os.makedirs("./checkpoints")
-                save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
-                    params.checkpoint))
-                print("Model saved in file: %s" % save_path)
+                print("Epoch: {} Iteration: {} VLB: {} Rec Loss: {}".format(e,
+                                                                            gs,
+                                                                            np.mean(lb),
+                                                                            rl,
+                                                                            ))
+                val_vlb, val_rec = [], []
+                def validate():
+                    for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
+                        use_obj_vectors=params.use_c_v):
+                        gs = tf.train.global_step(sess, global_step)
+                        feed = {image_f_inputs: f_images_batch,
+                                ann_inputs_enc: captions_batch[1],
+                                ann_inputs_dec: captions_batch[0],
+                                ann_lengths: cl_batch,
+                                anneal: gs}
+                        if params.use_c_v or (
+                            params.prior == 'GMM' or params.prior == 'AG'):
+                            feed.update({c_i: c_v[:, 1:]})
+                        sess.run(training_init_op, feed)
+                        while True:
+                            try:
+                                kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
+                                                      feed_dict=feed)
+                            except tf.errors.OutOfRangeError:
+                                break
+                        val_vlb.append(lb)
+                        val_rec.append(rl)
+                    print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
+                                                                   np.mean(val_rec)))
+                    print("-----------------------------------------------")
+                validate()
+                # save model
+                if params.mode == "training":
+                    if not os.path.exists("./checkpoints"):
+                        os.makedirs("./checkpoints")
+                    save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
+                        params.checkpoint))
+                    print("Model saved in file: %s" % save_path)
         # save model
-        if not os.path.exists("./checkpoints"):
-            os.makedirs("./checkpoints")
-        # builder.add_meta_graph_and_variables(sess, ["main_model"])
-        if params.num_epochs > 0 or params.mode == "training":
-            save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
-                params.checkpoint))
-            print("Model saved in file: %s" % save_path)
+        # if not os.path.exists("./checkpoints"):
+        #     os.makedirs("./checkpoints")
+        # # builder.add_meta_graph_and_variables(sess, ["main_model"])
+        # if params.num_epochs > 0 or params.mode == "training":
+        #     save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
+        #         params.checkpoint))
+        #     print("Model saved in file: %s" % save_path)
         # run inference
         if params.mode == "inference":
             # validation set

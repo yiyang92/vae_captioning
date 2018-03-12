@@ -45,7 +45,9 @@ class Parameters():
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
     mode = 'training' # training or inference
-    num_ex_per_epoch = 586363 # 586363 for im2txt
+    num_ex_per_epoch = 150000 # 586363 for im2txt
+    repeat_every_load = 1 # during fine_tune
+    image_net_weights_path = './utils/vgg16_weights.npz'
     def parse_args(self):
         import argparse
         import os
