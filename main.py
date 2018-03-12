@@ -18,15 +18,11 @@ print("Tensorflow version: ", tf.__version__)
 
 def main(params):
     # load data, class data contains captions, images, image features (if avaliable)
-    base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
-                                                     include_top=True)
-    model = tf.contrib.keras.models.Model(inputs=base_model.input,
-                                          outputs=base_model.get_layer('fc2').output)
     if params.gen_val_captions < 0:
         repartiton = False
     else:
         repartiton = True
-    data = Data(coco_dir, True, model, repartiton=repartiton,
+    data = Data(coco_dir, True, repartiton=repartiton,
                 gen_val_cap=params.gen_val_captions)
     # load batch generator, repartiton to use more val set images in train
     gen_batch_size = params.batch_size
@@ -88,7 +84,7 @@ def main(params):
     image_f_inputs2 = tf.placeholder_with_default(tf.zeros([0, 224, 224, 3]),
                                                   shape=[None, 224, 224, 3])
     if params.fine_tune:
-        image_f_inputs2 = image_f_inputs
+        image_f_inputs2 = image_batch
     image_embeddings = vgg16(image_f_inputs2)
     if params.fine_tune:
         features = image_embeddings.fc2
@@ -230,8 +226,8 @@ def main(params):
     with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
-        # if params.fine_tune:
-        image_embeddings.load_weights(params.image_net_weights_path, sess)
+        if not params.restore:
+            image_embeddings.load_weights(params.image_net_weights_path, sess)
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
         if params.restore:
@@ -241,7 +237,7 @@ def main(params):
         summary_writer = tf.summary.FileWriter(params.LOG_DIR, sess.graph)
         summary_writer.add_graph(sess.graph)
         if params.mode == "training":
-            print(tf.trainable_variables())
+            # print(tf.trainable_variables())
             for e in range(params.num_epochs):
                 gs = tf.train.global_step(sess, global_step)
                 gs_epoch = 0
@@ -324,14 +320,7 @@ def main(params):
                     save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
                         params.checkpoint))
                     print("Model saved in file: %s" % save_path)
-        # save model
-        # if not os.path.exists("./checkpoints"):
-        #     os.makedirs("./checkpoints")
-        # # builder.add_meta_graph_and_variables(sess, ["main_model"])
-        # if params.num_epochs > 0 or params.mode == "training":
-        #     save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
-        #         params.checkpoint))
-        #     print("Model saved in file: %s" % save_path)
+        # builder.add_meta_graph_and_variables(sess, ["main_model"])
         # run inference
         if params.mode == "inference":
             # validation set

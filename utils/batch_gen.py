@@ -201,7 +201,7 @@ class Batch_Generator():
             yield images, image_ids, cl_v
 
     def _get_images(self, names):
-        """Preprocess for VGG16
+        """Load images
         Args:
             images: np.array of shape [batch_size, None, None, 3]
         Returns:
@@ -216,7 +216,6 @@ class Batch_Generator():
             image = tf.contrib.keras.preprocessing.image.load_img(
                 name, target_size=(224, 224))
             image = tf.contrib.keras.preprocessing.image.img_to_array(image)
-            image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
             images.append(image)
         return np.stack(images)
 

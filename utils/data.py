@@ -10,8 +10,7 @@ from utils.batch_gen import Batch_Generator
 from utils.captions import Captions, Dictionary
 
 class Data():
-    def __init__(self, coco_path, extract_features=False,
-                 ex_features_model=None, repartiton=False,
+    def __init__(self, coco_path, extract_features=False, repartiton=False,
                  gen_val_cap=None):
         # captions
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
@@ -35,12 +34,9 @@ class Data():
         if repartiton and not gen_val_cap:
             raise ValueError("If using repartition must specify how many val "
                              "images to use")
-        assert ex_features_model != None, "Specify tf.contrib.keras model"
-        self.ex_features_model = ex_features_model
         if extract_features:
             # prepare image features or load them from pickle file
-            self.train_feature_dict = self.extract_features_from_dir(self.train_dir,
-                                                                     ex_features_model)
+            self.train_feature_dict = self.extract_features_from_dir(self.train_dir)
 
     def load_train_data_generator(self, batch_size, fine_tune=False):
         """
@@ -54,8 +50,7 @@ class Data():
         val_cap, valid_feature_dict = None, None
         if self.repartiton:
             val_cap = self.captions_val
-            valid_feature_dict = self.extract_features_from_dir(self.valid_dir,
-                                                   self.ex_features_model)
+            valid_feature_dict = self.extract_features_from_dir(self.valid_dir)
         if fine_tune or not feature_dict:
             self.train_batch_gen = Batch_Generator(self.train_dir,
                                                   self.train_cap_json,
@@ -74,8 +69,8 @@ class Data():
                                             self.gen_val_cap)
         return self.train_batch_gen
 
-    def extract_features_from_dir(self, data_dir, model=None, save_pickle=True,
-                         im_shape=(224, 224)):
+    def extract_features_from_dir(self, data_dir, save_pickle=True,
+                                  im_shape=(224, 224)):
         """
         Args:
             data_dir: image data directory
@@ -87,9 +82,6 @@ class Data():
             feature_dict: dictionary of the form {image_name: feature_vector}
         """
         feature_dict = {}
-        assert model != None, "Specify tf.contrib.keras model"
-        if not os.path.exists("./pickles"):
-            os.makedirs("./pickles")
         try:
             with open(
                 "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'rb') as rf:
@@ -98,6 +90,13 @@ class Data():
                 feature_dict = pickle.load(rf)
         except:
             print("Extracting features")
+            if not os.path.exists("./pickles"):
+                os.makedirs("./pickles")
+            base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
+                                                             include_top=True)
+            model = tf.contrib.keras.models.Model(inputs=base_model.input,
+                                                  outputs=base_model.get_layer(
+                                                      'fc2').output)
             for img_path in tqdm(glob(data_dir + '*.jpg')):
                 img = tf.contrib.keras.preprocessing.image.load_img(img_path,
                                                                     target_size=im_shape)
@@ -107,6 +106,7 @@ class Data():
                 features = model.predict(x)
                 # ex. COCO_val2014_0000000XXXXX.jpg
                 feature_dict[img_path.split('/')[-1]] = features
+            del model
             if save_pickle:
                 with open(
                     "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'wb') as wf:
@@ -147,8 +147,7 @@ class Data():
         size parameter (meaning will generate all data at once) for convenience.
         """
         if pretrained:
-            valid_feature_dict = self.extract_features_from_dir(self.valid_dir,
-                                                       self.ex_features_model)
+            valid_feature_dict = self.extract_features_from_dir(self.valid_dir)
         else:
             valid_feature_dict = None
         self.valid_batch_gen = Batch_Generator(self.valid_dir,
@@ -170,8 +169,7 @@ class Data():
             Test batch generator
         """
         if pretrained:
-            test_feature_dict = self.extract_features_from_dir(self.test_dir,
-                                                      self.ex_features_model)
+            test_feature_dict = self.extract_features_from_dir(self.test_dir)
         else:
             test_feature_dict = None
         self.train_batch_gen = Batch_Generator(self.test_dir,
