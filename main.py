@@ -22,8 +22,8 @@ def main(params):
         repartiton = False
     else:
         repartiton = True
-    data = Data(coco_dir, True, repartiton=repartiton,
-                gen_val_cap=params.gen_val_captions)
+    data = Data(coco_dir, True, params.image_net_weights_path,
+                repartiton=repartiton, gen_val_cap=params.gen_val_captions)
     # load batch generator, repartiton to use more val set images in train
     gen_batch_size = params.batch_size
     if params.fine_tune:
@@ -81,8 +81,7 @@ def main(params):
     # features, params.fine_tune stands for not using presaved imagenet weights
     # here, used this dummy placeholder during fine_tune, will remove it in
     # future releases, thats for saving image_net weights for futher usage
-    image_f_inputs2 = tf.placeholder_with_default(tf.zeros([0, 224, 224, 3]),
-                                                  shape=[None, 224, 224, 3])
+    image_f_inputs2 = tf.zeros([0, 224, 224, 3])
     if params.fine_tune:
         image_f_inputs2 = image_batch
     image_embeddings = vgg16(image_f_inputs2)
@@ -109,10 +108,10 @@ def main(params):
         c_i_emb = layers.dense(cl_vectors, params.embed_size, name='cv_emb')
         # map cluster vectors into embedding space
         decoder.c_i = c_i_emb
-        decoder.c_i_ph = c_i
+        decoder.c_i_ph = cl_vectors
         if not params.no_encoder:
             encoder.c_i = c_i_emb
-            encoder.c_i_ph = c_i
+            encoder.c_i_ph = cl_vectors
     if not params.no_encoder:
         qz, tm_list, tv_list = encoder.q_net()
         def init_clusters(num_clusters):
@@ -196,7 +195,8 @@ def main(params):
                               trainable=False,
                               collections=[tf.GraphKeys.GLOBAL_STEP,
                                            tf.GraphKeys.GLOBAL_VARIABLES])
-    num_batches_per_epoch = params.num_ex_per_epoch / params.batch_size
+    num_batches_per_epoch = params.num_ex_per_epoch / (
+        params.batch_size + 0.001)
     decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
     learning_rate_decay = tf.train.exponential_decay(learning_rate,
                                                global_step,
@@ -256,7 +256,8 @@ def main(params):
                                 ann_lengths: cl_batch,
                                 anneal: gs,
                                 learning_rate: params.learning_rate}
-                        if params.use_c_v:
+                        if params.use_c_v or (
+                            params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
                         sess.run(training_init_op, feed)
                         while True:

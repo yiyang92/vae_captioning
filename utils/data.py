@@ -8,10 +8,11 @@ import os
 
 from utils.batch_gen import Batch_Generator
 from utils.captions import Captions, Dictionary
+from utils.image_embeddings import vgg16
 
 class Data():
-    def __init__(self, coco_path, extract_features=False, repartiton=False,
-                 gen_val_cap=None):
+    def __init__(self, coco_path, extract_features=False, 
+                 weights_path=None, repartiton=False, gen_val_cap=None):
         # captions
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
         self.valid_cap_json = coco_path + "annotations/captions_val2014.json"
@@ -36,7 +37,11 @@ class Data():
                              "images to use")
         if extract_features:
             # prepare image features or load them from pickle file
-            self.train_feature_dict = self.extract_features_from_dir(self.train_dir)
+            self.weights_path = weights_path
+            if not weights_path:
+                raise ValueError("Specify imagenet weights path")
+            self.train_feature_dict = self.extract_features_from_dir(
+                self.train_dir)
 
     def load_train_data_generator(self, batch_size, fine_tune=False):
         """
@@ -92,21 +97,23 @@ class Data():
             print("Extracting features")
             if not os.path.exists("./pickles"):
                 os.makedirs("./pickles")
-            base_model = tf.contrib.keras.applications.VGG16(weights='imagenet',
-                                                             include_top=True)
-            model = tf.contrib.keras.models.Model(inputs=base_model.input,
-                                                  outputs=base_model.get_layer(
-                                                      'fc2').output)
-            for img_path in tqdm(glob(data_dir + '*.jpg')):
-                img = tf.contrib.keras.preprocessing.image.load_img(img_path,
-                                                                    target_size=im_shape)
-                x = tf.contrib.keras.preprocessing.image.img_to_array(img)
-                x = np.expand_dims(x, axis=0)
-                x = tf.contrib.keras.applications.vgg16.preprocess_input(x)
-                features = model.predict(x)
-                # ex. COCO_val2014_0000000XXXXX.jpg
-                feature_dict[img_path.split('/')[-1]] = features
-            del model
+            im_embed = tf.Graph()
+            with im_embed.as_default():
+                input_img = tf.placeholder(tf.float32, [None,
+                                                        im_shape[0],
+                                                        im_shape[1], 3])
+                image_embeddings = vgg16(input_img)
+                features = image_embeddings.fc2
+            with tf.Session(graph=im_embed) as sess:
+                image_embeddings.load_weights(self.weights_path, sess)
+                for img_path in tqdm(glob(data_dir + '*.jpg')):
+                    img = tf.contrib.keras.preprocessing.image.load_img(img_path,
+                                                                        target_size=im_shape)
+                    img = tf.contrib.keras.preprocessing.image.img_to_array(img)
+                    img = np.expand_dims(img, axis=0)
+                    f_vector = sess.run(features, {input_img: img})
+                    # ex. COCO_val2014_0000000XXXXX.jpg
+                    feature_dict[img_path.split('/')[-1]] = f_vector
             if save_pickle:
                 with open(
                     "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'wb') as wf:
