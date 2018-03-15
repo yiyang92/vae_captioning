@@ -3,7 +3,7 @@ from collections import defaultdict, Counter
 import re
 
 class Captions():
-    def __init__(self, captions_file):
+    def __init__(self, captions_file, max_length=16):
         """
             Args:
             captions_file - coco captions json file
@@ -11,7 +11,7 @@ class Captions():
         # captions_file = captions json file
         self.captions = defaultdict(list)
         self._cap_json = captions_file
-        self.max_length = 0
+        self.max_length = max_length
         self._fn_to_id = None
         self._load_captions_from_file()
         # maintain separate dictionary with indexed captions, look at memory usage
@@ -29,10 +29,10 @@ class Captions():
             self._fn_to_id = {img['file_name']:img['id'] for img in j['images']}
             # for every file name 5 captions
             for cap in j['annotations']:
+                if len(cap) > self.max_length:
+                    # clip long captions
+                    cap = cap[:self.max_length]
                 tokenized = self._tokenize_caption(cap['caption'])
-                seq_length = len(tokenized)
-                if seq_length > self.max_length:
-                    self.max_length = seq_length
                 self.captions[imid_fn[cap['image_id']]].append(tokenized)
 
     def _tokenize_caption(self, caption):
@@ -64,7 +64,7 @@ class Captions():
 
 # building Vocabulary
 class Dictionary(object):
-    def __init__(self, caption_dict, keep_words=3):
+    def __init__(self, caption_dict, keep_words):
         """
         Args:
             caption_dict: dictionary of {file_name: [['cap1'], ['cap2']]}
@@ -72,6 +72,7 @@ class Dictionary(object):
         """
         # sentences - array of sentences
         self._captions = caption_dict
+        self._keep_words = keep_words
         self._word2idx = {}
         self._idx2word = {}
         self._words = []
@@ -110,7 +111,7 @@ class Dictionary(object):
         sorted_dict = sorted(counter.items(), key= lambda x: (-x[1], x[0]))
         # keep n words to be included in vocabulary
         sorted_dict = [(wd, count) for wd, count in sorted_dict
-                       if count >= 3 or wd == '<UNK>']
+                       if count >= self._keep_words or wd == '<UNK>']
         # after sorting the dictionary, get ordered words
         words, _ = list(zip(*sorted_dict))
         self._word2idx = dict(zip(words, range(1, len(words) + 1)))

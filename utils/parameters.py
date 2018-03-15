@@ -17,12 +17,11 @@ class Parameters():
     # encoder
     encoder_rnn_layers = 1
     encoder_hidden = 512
-    keep_rate = 1.0
     # decoder
     std = 0.1 # decoder test time N(0, std)
     decoder_hidden = 512
     decoder_rnn_layers = 1
-    dec_keep_rate = 1.0
+    dec_keep_rate = 1.0 # decoder caption input dropout
     embed_size = 256
     gen_max_len = 30
     gen_z_samples = 20 # according to paper (Diverse cap)
@@ -37,17 +36,22 @@ class Parameters():
     no_encoder = False
     vocab_size = None # need to be set during data load
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
+    hdf5_file = coco_dir + "train_val.hdf5" # file contains val+train images
+    usehdf5 = True
     gen_name = "00"
     checkpoint = "last_run"
     num_epochs_per_decay = 5
     use_c_v = False
+    # preprocessing
     gen_val_captions = 4000 # set -1 to generate captions on a full dataset
+    keep_words = 5 # minimal time of word occurence
+    cap_max_length = 16 # maximum length of caption, more will be clipped
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
     mode = 'training' # training or inference
     num_ex_per_epoch = 150000 # 586363 for im2txt
-    repeat_every_load = 1 # during fine_tune
     image_net_weights_path = './utils/vgg16_weights.npz'
+    logging = False
     def parse_args(self):
         import argparse
         import os
@@ -81,7 +85,7 @@ class Parameters():
                             help="set temperature parameter for generation")
         parser.add_argument('--gen_name', default=self.gen_name,
                             help="prefix of generated json nam")
-        parser.add_argument('--dec_drop', default=self.keep_rate,
+        parser.add_argument('--dec_drop', default=self.dec_keep_rate,
                             help="decoder caption dropout")
         parser.add_argument('--gen_z_samples', default=self.gen_z_samples,
                             help="#z samples")
@@ -140,6 +144,8 @@ class Parameters():
         self.prior = args.prior
         self.fine_tune = args.fine_tune
         self.mode = args.mode
+        # update according to user entered parameter
+        self.hdf5_file = self.coco_dir + self.hdf5_file.split('/')[-1]
         # CUDA settings
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu

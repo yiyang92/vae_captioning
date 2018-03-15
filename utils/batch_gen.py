@@ -5,6 +5,8 @@ import cv2
 import json
 import pickle
 import tensorflow as tf
+import tqdm
+import h5py
 
 from random import shuffle
 from utils.captions import Captions
@@ -13,7 +15,9 @@ from utils.captions import Captions
 class Batch_Generator():
     def __init__(self, train_dir, train_cap_json=None,
                  captions=None, batch_size=None,
-                 im_shape=(299, 299), feature_dict=None,
+                 use_hdf5=False,
+                 hdf5_file=None,
+                 feature_dict=None,
                  get_image_ids=False, get_test_ids=False,
                  val_tr_unused=None):
         """
@@ -22,11 +26,19 @@ class Batch_Generator():
             train_cap_json: json with coco annotations
             captions : instance of Captions() class
             batch_size: batch size, can be changed later
-            im_shape: desirable image shapes
             feature_dict: if given, use feauture vectors instead of images in generator
             get_image_ids: whether or not return image_id list (used for test/val)
             val_tr_unused : (optional), dont use used in training for validation
         """
+        self.use_hdf5 = use_hdf5
+        if self.use_hdf5:
+            if not hdf5_file:
+                raise ValueError("Specify hdf5 file path")
+            with open('./pickles/itoi.pickle', 'rb') as rf:
+                self.imtoi = pickle.load(rf)
+            # "images"
+            self.h5f = h5py.File(hdf5_file, 'r')
+            self.images = self.h5f['images']
         self._batch_size = batch_size
         if val_tr_unused == None:
             self._iterable = list(glob(train_dir + '*.jpg'))
@@ -51,8 +63,6 @@ class Batch_Generator():
         # seed for reproducibility
         self.random_seed = 42
         np.random.seed(self.random_seed)
-        # image shape, for preprocessing
-        self.im_shape = im_shape
         self.feature_dict = feature_dict
         self.get_image_ids = get_image_ids
         self.unused_cap_in = None
@@ -84,7 +94,7 @@ class Batch_Generator():
                              "training need to specify val_feature_dict")
         self.val_feature_dict = val_feature_dict
 
-    def _images_c_v(self, imn_batch, c_v):
+    def _images_c_v(self, imn_batch, c_v, indices):
         """Internal method, returns [batch_size, I] and [batch_size, c(I)]
         Returns:
             images, cl_v: images and cluster vectors
@@ -111,7 +121,7 @@ class Batch_Generator():
         if self.feature_dict:
             images = np.squeeze(np.array(images), 1)
         else:
-            images = self._get_images(imn_batch)
+            images = self._get_images(imn_batch, indices)
         return images, cl_v
 
     def _get_imid(self, imn_batch, test=False):
@@ -133,6 +143,23 @@ class Batch_Generator():
                     image_ids.append(id_)
         return image_ids
 
+    def _next_imn(self):
+        indices = np.random.choice(range(len(self._iterable)),
+                                self._batch_size, replace=False)
+        return np.array(self._iterable)[indices]
+
+    def _get_indices(self, imn_batch):
+        """Get indices+sorted names of images in hdf5 file.
+        """
+        imn_index = []
+        for name in imn_batch:
+            name = name.split('/')[-1]
+            index = self.imtoi[name]
+            imn_index.append((name, index))
+        imn_index = sorted(imn_index, key= lambda x: (x[1], x[0]))
+        imn_batch, indices = list(zip(*imn_index)) # return tuples
+        return list(imn_batch), list(indices)
+
     def next_batch(self, get_image_ids = False, use_obj_vectors=False):
         self.get_image_ids = get_image_ids
         # separately specify whether to use cluster obj_vectors
@@ -141,8 +168,60 @@ class Batch_Generator():
             c_v = self._get_cluster_vectors()
         else:
             c_v = None
-        # shuffle
+        #batches_per_set = len(self._iterable) // self._batch_size
+        #for _ in range(batches_per_set):
+        # separately specify whether to use cluster obj_vectors
+        imn_batch  = [None] * self._batch_size
         shuffle(self._iterable)
+        for i, item in enumerate(self._iterable):
+            inx = i % self._batch_size
+            imn_batch[inx] = item
+            if inx == self._batch_size - 1:
+                indices = None
+                if self.use_hdf5:
+                    imn_batch, indices = self._get_indices(imn_batch)
+                images, cl_v = self._images_c_v(imn_batch, c_v, indices)
+                # concatenate to obtain [images, caption_indices, lengths]
+                inp_captions, l_captions, lengths = self._form_captions_batch(
+                    imn_batch)
+                yield images, (inp_captions, l_captions), lengths, cl_v
+                imn_batch = [None] * self._batch_size
+        if imn_batch[0]:
+            imn_batch = [item for item in imn_batch if item]
+            indices = None
+            if self.use_hdf5:
+                imn_batch, indices = self._get_indices(imn_batch)
+            images, cl_v = self._images_c_v(imn_batch, c_v, indices)
+            inp_captions, l_captions, lengths = self._form_captions_batch(
+                imn_batch)
+            yield images, (inp_captions, l_captions), lengths, cl_v
+            # images, cl_v = self._images_c_v(imn_batch, c_v, indices)
+            # # concatenate to obtain [images, caption_indices, lengths]
+            # inp_captions, l_captions, lengths = self._form_captions_batch(
+            #     imn_batch)
+            # if self.get_image_ids:
+            #     image_ids = self._get_imid(imn_batch)
+            #     yield images, (inp_captions,
+            #                    l_captions), lengths, image_ids, cl_v
+            # else:
+            #     yield images, (inp_captions, l_captions), lengths, cl_v
+
+    def _test_images_to_imid(self):
+        with open(self._train_cap_json) as rf:
+            try:
+                j = json.loads(rf.read())
+            except FileNotFoundError as e:
+                raise
+        return {img['file_name']:img['id'] for img in j['images']}
+
+    def next_val_batch(self, get_image_ids = False, use_obj_vectors=False):
+        self.get_image_ids = get_image_ids
+        # separately specify whether to use cluster obj_vectors
+        self.use_obj_vectors = use_obj_vectors
+        if self.use_obj_vectors:
+            c_v = self._get_cluster_vectors()
+        else:
+            c_v = None
         imn_batch  = [None] * self._batch_size
         for i, item in enumerate(self._iterable):
             inx = i % self._batch_size
@@ -171,14 +250,6 @@ class Batch_Generator():
             else:
                 yield images, (inp_captions, l_captions), lengths, cl_v
 
-    def _test_images_to_imid(self):
-        with open(self._train_cap_json) as rf:
-            try:
-                j = json.loads(rf.read())
-            except FileNotFoundError as e:
-                raise
-        return {img['file_name']:img['id'] for img in j['images']}
-
     def next_test_batch(self, use_obj_vectors=False):
         imn_batch  = [None] * self._batch_size
         self.use_obj_vectors = use_obj_vectors
@@ -200,39 +271,27 @@ class Batch_Generator():
             image_ids = self._get_imid(imn_batch, True)
             yield images, image_ids, cl_v
 
-    def _get_images(self, names):
+    def _get_images(self, names, indices=None):
         """Load images
         Args:
             images: np.array of shape [batch_size, None, None, 3]
         Returns:
             np.array of shape [batch_size, 224, 224, 3]
         """
-        # TODO: try save preprocessed images and load during training
-        images = []
-        for name in names:
-            # image preprocessing
-            #image = cv2.cvtColor(cv2.imread(name), cv2.COLOR_BGR2RGB)
-            #image = self._preprocess_image(image)
-            image = tf.contrib.keras.preprocessing.image.load_img(
-                name, target_size=(224, 224))
-            image = tf.contrib.keras.preprocessing.image.img_to_array(image)
-            images.append(image)
-        return np.stack(images)
+        if self.use_hdf5:
+            # must be in increasing order
+            return self.images[indices]
+        else:
+            images = []
+            for name in names:
+                # image preprocessing
+                img = cv2.imread(name)
+                img = cv2.resize(img, (224, 224))
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                images.append(img)
+            return np.stack(images)
 
-    def _preprocess_image(self, image):
-        """
-        Args:
-            image: numpy array contained image
-        """
-        # first crop the image and resize it
-        crop = min(image.shape[0], image.shape[1])
-        h_start = image.shape[0] // 2 - crop // 2
-        w_start = image.shape[1] // 2 - crop // 2
-        image = image[h_start: h_start + crop, w_start: w_start + crop] / 255 - 0.5
-        image = cv2.resize(image, self.im_shape)
-        return image
-
-    def _form_captions_batch(self, imn_batch, random_select=True):
+    def _form_captions_batch(self, imn_batch):
         """
         Args:
             imn_batch: image file names in the batch
@@ -245,26 +304,16 @@ class Batch_Generator():
         # calculate length of every sequence and make a list
         # randomly choose caption for the current iteration
         # use static array for efficiency
-        if random_select:
-            labels_captions_list = [None] * len(imn_batch)
-            input_captions_list = [None] * len(imn_batch)
-            lengths = np.zeros(len(imn_batch))
-        else:
-            # TODO: finish
-            num_captions = 5
-            labels_captions_list = [None] * len(imn_batch) * num_captions
-            input_captions_list = [None] * len(imn_batch) * num_captions
-            lengths = np.zeros(len(imn_batch)) * num_captions
+        labels_captions_list = [None] * len(imn_batch)
+        input_captions_list = [None] * len(imn_batch)
+        lengths = np.zeros(len(imn_batch))
         idx = 0
         for fn in imn_batch:
             # TODO: improve error handling when file is not correct
             fn = fn.split('/')[-1]
             try:
-                if random_select:
-                    caption = self.captions[fn][np.random.randint(
-                        len(self.captions[fn]))]
-                else:
-                    caption = self.captions[fn]
+                caption = self.captions[fn][np.random.randint(
+                    len(self.captions[fn]))]
             except:
                 # validation captions, maybe find better way to process?
                 caption = self.val_captions[fn][np.random.randint(
@@ -274,7 +323,8 @@ class Batch_Generator():
             labels_captions_list[idx] = caption[1:] # ...<EOS>
             lengths[idx] = len(input_captions_list[idx])
             idx += 1
-        # add padding and put captions into np array of shape [batch_size, max_batch_seq_len]
+        # add padding and put captions into np array of shape [batch_size,
+        # max_batch_seq_len]
         pad = len(max(input_captions_list, key=len))
         input_captions_list = np.array([
             cap + [0] * (pad - len(cap)) for cap in input_captions_list])

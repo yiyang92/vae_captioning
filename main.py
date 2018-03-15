@@ -22,12 +22,12 @@ def main(params):
         repartiton = False
     else:
         repartiton = True
-    data = Data(coco_dir, True, params.image_net_weights_path,
+    data = Data(params, True, params.image_net_weights_path,
                 repartiton=repartiton, gen_val_cap=params.gen_val_captions)
     # load batch generator, repartiton to use more val set images in train
     gen_batch_size = params.batch_size
     if params.fine_tune:
-        gen_batch_size = 5000
+        gen_batch_size = params.batch_size
     batch_gen = data.load_train_data_generator(gen_batch_size,
                                                params.fine_tune)
     # whether use presaved pretrained imagenet features (saved in pickle)
@@ -54,30 +54,9 @@ def main(params):
         c_i = tf.placeholder(tf.float32, [None, 90])
     else:
         c_i = ann_lengths # dummy tensor
-    if params.mode == "training":
-        dataset = tf.data.Dataset.from_tensor_slices((image_f_inputs,
-                                                   ann_inputs_enc,
-                                                   ann_inputs_dec,
-                                                   ann_lengths,
-                                                   c_i))
-        if params.fine_tune:
-            dataset = dataset.repeat(params.repeat_every_load)
-        dataset = dataset.batch(params.batch_size)
-        dataset = dataset.shuffle(buffer_size=gen_batch_size)
-        iterator = tf.data.Iterator.from_structure(dataset.output_types,
-                                       dataset.output_shapes)
-        training_init_op = iterator.make_initializer(dataset)
-        next_element = iterator.get_next()
-        image_batch, cap_enc, cap_dec, cap_len, cl_vectors = next_element
-        # debugging print
-        # prnt1 = tf.Print(image_batch, [tf.shape(image_batch),
-        #                                tf.shape(cap_enc),
-        #                                tf.shape(cap_dec),
-        #                                tf.shape(cap_len)],
-        #                  message="shapes")
-    else:
-        image_batch, cap_enc, cap_dec, cap_len, cl_vectors = image_f_inputs,\
-        ann_inputs_enc, ann_inputs_dec, ann_lengths, c_i
+    # because of past changes
+    image_batch, cap_enc, cap_dec, cap_len, cl_vectors = image_f_inputs,\
+    ann_inputs_enc, ann_inputs_dec, ann_lengths, c_i
     # features, params.fine_tune stands for not using presaved imagenet weights
     # here, used this dummy placeholder during fine_tune, will remove it in
     # future releases, thats for saving image_net weights for futher usage
@@ -135,7 +114,7 @@ def main(params):
             # kld between normal distributions KL(q, p), see Kingma et.al
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
-                    1 + qz.distribution.logstd
+                    1 + (1e-8 + qz.distribution.logstd)
                     - tf.square(qz.distribution.mean)
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'GMM':
@@ -144,7 +123,7 @@ def main(params):
             c_means, c_sigma = init_clusters(90)
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
-                    1 + qz.distribution.logstd
+                    1 + (1e-8 + qz.distribution.logstd)
                     - tf.square(qz.distribution.mean)
                     - tf.exp(qz.distribution.logstd),1))
         elif params.prior == 'AG':
@@ -209,7 +188,7 @@ def main(params):
                                                  global_step=global_step)
     elif params.optimizer == 'Adam':
         optimize = tf.train.AdamOptimizer(
-            params.learning_rate).apply_gradients(grads_vars,
+            params.learning_rate, beta1=0.8).apply_gradients(grads_vars,
                                                   global_step=global_step)
     elif params.optimizer == 'Momentum':
         momentum = 0.90
@@ -226,17 +205,18 @@ def main(params):
     with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
-        if not params.restore:
+        if not params.restore and params.fine_tune:
             image_embeddings.load_weights(params.image_net_weights_path, sess)
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
-        if params.restore:
-            print("Restoring from checkpoint")
-            saver.restore(sess, "./checkpoints/{}.ckpt".format(
-                params.checkpoint))
-        summary_writer = tf.summary.FileWriter(params.LOG_DIR, sess.graph)
-        summary_writer.add_graph(sess.graph)
+        if params.logging:
+            summary_writer = tf.summary.FileWriter(params.LOG_DIR, sess.graph)
+            summary_writer.add_graph(sess.graph)
         if params.mode == "training":
+            if params.restore:
+                print("Restoring from checkpoint")
+                saver.restore(sess, "./checkpoints/{}.ckpt".format(
+                    params.checkpoint))
             # print(tf.trainable_variables())
             for e in range(params.num_epochs):
                 gs = tf.train.global_step(sess, global_step)
@@ -259,26 +239,19 @@ def main(params):
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
-                        sess.run(training_init_op, feed)
-                        while True:
-                            try:
-                                gs = tf.train.global_step(sess, global_step)
-                                feed.update({anneal: gs})
-                                kl, rl, lb, _, ann = sess.run([kld, rec_loss,
-                                                               lower_bound,
-                                                               optimize, annealing],
-                                                              feed)
-                                gs_epoch += 1
-                                if gs % 500 == 0:
-                                    print("Epoch: {} Iteration: {} VLB: {} "
-                                          "Rec Loss: {}".format(e,
-                                                                gs,
-                                                                np.mean(lb),rl))
-                                    if not params.no_encoder:
-                                        print("Annealing coefficient:"
-                                              "{} KLD: {}".format(ann, np.mean(kl)))
-                            except tf.errors.OutOfRangeError:
-                                break
+                        gs = tf.train.global_step(sess, global_step)
+                        feed.update({anneal: gs})
+                        kl, rl, lb, _, ann = sess.run([kld, rec_loss,
+                                                       lower_bound,
+                                                       optimize, annealing],
+                                                      feed)
+                        gs_epoch += 1
+                        if gs % 500 == 0:
+                            print("Epoch: {} Iteration: {} VLB: {} "
+                                  "Rec Loss: {}".format(e, gs, np.mean(lb),rl))
+                            if not params.no_encoder:
+                                print("Annealing coefficient:"
+                                      "{} KLD: {}".format(ann, np.mean(kl)))
                         if stop_condition():
                             break
                     if stop_condition():
@@ -301,13 +274,8 @@ def main(params):
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
-                        sess.run(training_init_op, feed)
-                        while True:
-                            try:
-                                kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
-                                                      feed_dict=feed)
-                            except tf.errors.OutOfRangeError:
-                                break
+                        kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
+                                              feed_dict=feed)
                         val_vlb.append(lb)
                         val_rec.append(rl)
                     print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
@@ -322,13 +290,21 @@ def main(params):
                         params.checkpoint))
                     print("Model saved in file: %s" % save_path)
         # builder.add_meta_graph_and_variables(sess, ["main_model"])
+        if params.usehdf5 and params.fine_tune:
+            batch_gen.h5f.close()
         # run inference
         if params.mode == "inference":
+            print("Restoring from checkpoint")
+            saver.restore(sess, "./checkpoints/{}.ckpt".format(
+                params.checkpoint))
             # validation set
             captions_gen = []
             print("Generating captions for val file")
             acc, caps = [], []
-            for f_images_batch, _, _, image_ids, c_v in val_gen.next_batch(
+            # for efficiency
+            val_gen._batch_size = 1000
+            test_gen._batch_size = 1000
+            for f_images_batch, _, _, image_ids, c_v in val_gen.next_val_batch(
                 get_image_ids=True, use_obj_vectors=params.use_c_v):
                 if params.use_c_v or (
                     params.prior == 'GMM' or params.prior == 'AG'):

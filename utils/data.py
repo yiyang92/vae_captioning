@@ -5,15 +5,19 @@ from tqdm import tqdm
 import numpy as np
 import pickle
 import os
+import cv2
+import h5py
 
 from utils.batch_gen import Batch_Generator
 from utils.captions import Captions, Dictionary
 from utils.image_embeddings import vgg16
 
 class Data():
-    def __init__(self, coco_path, extract_features=False, 
+    def __init__(self, params, extract_features=False,
                  weights_path=None, repartiton=False, gen_val_cap=None):
         # captions
+        coco_path = params.coco_dir
+        self.params = params
         self.train_cap_json = coco_path + "annotations/captions_train2014.json"
         self.valid_cap_json = coco_path + "annotations/captions_val2014.json"
         self.test_cap_json = coco_path + "annotations/image_info_test2014.json"
@@ -22,10 +26,11 @@ class Data():
         self.valid_dir = coco_path + "images/val2014/"
         self.test_dir = coco_path + "images/test2014/"
         # load captions into objects
-        self.captions_tr = Captions(self.train_cap_json)
-        self.captions_val = Captions(self.valid_cap_json)
+        self.captions_tr = Captions(self.train_cap_json, params.cap_max_length)
+        self.captions_val = Captions(self.valid_cap_json, params.cap_max_length)
         # form dictionary (idx to words and words to idx)
-        self.dictionary = Dictionary(self.captions_tr.captions)
+        self.dictionary = Dictionary(self.captions_tr.captions,
+                                     params.keep_words)
         self.captions_tr.index_captions(self.dictionary.word2idx)
         self.captions_val.index_captions(self.dictionary.word2idx)
         self.train_feature_dict = None
@@ -43,7 +48,8 @@ class Data():
             self.train_feature_dict = self.extract_features_from_dir(
                 self.train_dir)
 
-    def load_train_data_generator(self, batch_size, fine_tune=False):
+    def load_train_data_generator(self, batch_size, fine_tune=False,
+                                  usehdf5=True):
         """
         Args:
             batch_size: batch size
@@ -60,7 +66,8 @@ class Data():
             self.train_batch_gen = Batch_Generator(self.train_dir,
                                                   self.train_cap_json,
                                                   self.captions_tr,
-                                                  batch_size,
+                                                  batch_size,use_hdf5=True,
+                                                  hdf5_file=self.params.hdf5_file,
                                                   feature_dict=None)
         else:
             self.train_batch_gen = Batch_Generator(self.train_dir,
@@ -104,12 +111,14 @@ class Data():
                                                         im_shape[1], 3])
                 image_embeddings = vgg16(input_img)
                 features = image_embeddings.fc2
+                config = tf.ConfigProto()
+                config.gpu_options.allow_growth = True
             with tf.Session(graph=im_embed) as sess:
                 image_embeddings.load_weights(self.weights_path, sess)
                 for img_path in tqdm(glob(data_dir + '*.jpg')):
-                    img = tf.contrib.keras.preprocessing.image.load_img(img_path,
-                                                                        target_size=im_shape)
-                    img = tf.contrib.keras.preprocessing.image.img_to_array(img)
+                    img = cv2.imread(img_path)
+                    img = cv2.resize(img, im_shape)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     img = np.expand_dims(img, axis=0)
                     f_vector = sess.run(features, {input_img: img})
                     # ex. COCO_val2014_0000000XXXXX.jpg
@@ -119,33 +128,6 @@ class Data():
                     "./pickles/" + data_dir.split('/')[-2] + '.pickle', 'wb') as wf:
                     pickle.dump(feature_dict, wf)
         return feature_dict
-
-    def extract_features(self, image, im_shape=(224, 224, 3)):
-        """
-        Args:
-            image: input image
-        Returns:
-            image features
-        """
-        image = np.resize(image, im_shape)
-        image = np.expand_dims(image, axis=0)
-        image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
-        return self.ex_features_model.predict(image)
-
-    @staticmethod
-    def preprocess_images(images, shape=(224, 224, 3)):
-        """Preprocess for VGG16
-        Args:
-            images: np.array of shape [batch_size, None, None, 3]
-        Returns:
-            np.array of shape [batch_size, 224, 224, 3]
-        """
-        im_list = []
-        for image in images:
-            #image = np.resize(image, shape)
-            image = tf.contrib.keras.applications.vgg16.preprocess_input(image)
-            im_list.append(image)
-        return np.stack(im_list)
 
     def get_valid_data(self, val_batch_size=None, val_tr_unused=None,
                        pretrained=True):
