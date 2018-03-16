@@ -1,9 +1,10 @@
 import numpy as np
 import h5py
 import pickle
-import cv2
 from glob import glob
 import argparse
+
+from utils.image_utils import load_image
 
 def prepare_captions(params):
     ...
@@ -28,13 +29,7 @@ def main(params):
     imtoi = {}
     for i, image_path in enumerate(imgs):
         # load the image
-        img = cv2.imread(image_path)
-        img = cv2.resize(img, (224, 224))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # handle grayscale input images
-        if len(img.shape) == 2:
-            img = img[:, :, np.newaxis]
-            img = np.concatenate((img, img, img), axis=2)
+        img = load_image(image_path, shape=(224, 224))
         # yes, I know maybe better use indices, but I dont want to change current
         # processing too much
         imname = image_path.split('/')[-1]

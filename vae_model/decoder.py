@@ -85,10 +85,12 @@ class Decoder():
                     _, z_state = cell_0(z_dec, initial_state0)
                     initial_state = rnn_placeholders(z_state)
                 # captions LSTM
-                # TODO: correct sequence_length implementation
+                lengths = self.lengths
+                if gen_mode:
+                    lengths = None
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
-                                                         sequence_length=None,
+                                                         sequence_length=self.lengths,
                                                          initial_state=initial_state,
                                                          swap_memory=True,
                                                          dtype=tf.float32)

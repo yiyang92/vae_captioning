@@ -11,6 +11,7 @@ import h5py
 from utils.batch_gen import Batch_Generator
 from utils.captions import Captions, Dictionary
 from utils.image_embeddings import vgg16
+from utils.image_utils import load_image
 
 class Data():
     def __init__(self, params, extract_features=False,
@@ -116,9 +117,7 @@ class Data():
             with tf.Session(graph=im_embed) as sess:
                 image_embeddings.load_weights(self.weights_path, sess)
                 for img_path in tqdm(glob(data_dir + '*.jpg')):
-                    img = cv2.imread(img_path)
-                    img = cv2.resize(img, im_shape)
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    img = load_image(img_path)
                     img = np.expand_dims(img, axis=0)
                     f_vector = sess.run(features, {input_img: img})
                     # ex. COCO_val2014_0000000XXXXX.jpg

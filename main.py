@@ -205,18 +205,21 @@ def main(params):
     with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
-        if not params.restore and params.fine_tune:
-            image_embeddings.load_weights(params.image_net_weights_path, sess)
+        if params.restore:
+            print("Restoring from checkpoint")
+            saver.restore(sess, "./checkpoints/{}.ckpt".format(
+                params.checkpoint))
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
-        if params.logging:
-            summary_writer = tf.summary.FileWriter(params.LOG_DIR, sess.graph)
-            summary_writer.add_graph(sess.graph)
         if params.mode == "training":
-            if params.restore:
-                print("Restoring from checkpoint")
-                saver.restore(sess, "./checkpoints/{}.ckpt".format(
-                    params.checkpoint))
+            if params.logging:
+                summary_writer = tf.summary.FileWriter(params.LOG_DIR,
+                                                       sess.graph)
+                summary_writer.add_graph(sess.graph)
+            if not params.restore:
+                print("Loading imagenet weights, which will futher be used")
+                image_embeddings.load_weights(params.image_net_weights_path,
+                                              sess)
             # print(tf.trainable_variables())
             for e in range(params.num_epochs):
                 gs = tf.train.global_step(sess, global_step)
@@ -283,12 +286,11 @@ def main(params):
                     print("-----------------------------------------------")
                 validate()
                 # save model
-                if params.mode == "training":
-                    if not os.path.exists("./checkpoints"):
-                        os.makedirs("./checkpoints")
-                    save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
-                        params.checkpoint))
-                    print("Model saved in file: %s" % save_path)
+                if not os.path.exists("./checkpoints"):
+                    os.makedirs("./checkpoints")
+                save_path = saver.save(sess, "./checkpoints/{}.ckpt".format(
+                    params.checkpoint))
+                print("Model saved in file: %s" % save_path)
         # builder.add_meta_graph_and_variables(sess, ["main_model"])
         if params.usehdf5 and params.fine_tune:
             batch_gen.h5f.close()

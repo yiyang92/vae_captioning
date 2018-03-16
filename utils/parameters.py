@@ -44,8 +44,8 @@ class Parameters():
     use_c_v = False
     # preprocessing
     gen_val_captions = 4000 # set -1 to generate captions on a full dataset
-    keep_words = 5 # minimal time of word occurence
-    cap_max_length = 16 # maximum length of caption, more will be clipped
+    keep_words = 3 # minimal time of word occurence
+    cap_max_length = 100 # maximum length of caption, more will be clipped
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
     mode = 'training' # training or inference

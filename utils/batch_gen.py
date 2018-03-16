@@ -10,6 +10,7 @@ import h5py
 
 from random import shuffle
 from utils.captions import Captions
+from utils.image_utils import load_image
 
 # batch generator
 class Batch_Generator():
@@ -94,7 +95,7 @@ class Batch_Generator():
                              "training need to specify val_feature_dict")
         self.val_feature_dict = val_feature_dict
 
-    def _images_c_v(self, imn_batch, c_v, indices):
+    def _images_c_v(self, imn_batch, c_v, indices=None):
         """Internal method, returns [batch_size, I] and [batch_size, c(I)]
         Returns:
             images, cl_v: images and cluster vectors
@@ -274,7 +275,8 @@ class Batch_Generator():
     def _get_images(self, names, indices=None):
         """Load images
         Args:
-            images: np.array of shape [batch_size, None, None, 3]
+            names: image filenames
+            indices: using hdf5, indices of images in hdf5 file
         Returns:
             np.array of shape [batch_size, 224, 224, 3]
         """
@@ -284,10 +286,7 @@ class Batch_Generator():
         else:
             images = []
             for name in names:
-                # image preprocessing
-                img = cv2.imread(name)
-                img = cv2.resize(img, (224, 224))
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img = load_image(name)
                 images.append(img)
             return np.stack(images)
 
