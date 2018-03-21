@@ -61,9 +61,16 @@ def main(params):
     # here, used this dummy placeholder during fine_tune, will remove it in
     # future releases, thats for saving image_net weights for futher usage
     image_f_inputs2 = tf.zeros([0, 224, 224, 3])
+    trainable_top = False
+    trainable_fe = False
     if params.fine_tune:
         image_f_inputs2 = image_batch
-    image_embeddings = vgg16(image_f_inputs2)
+    if params.mode == 'training' and params.fine_tune:
+        trainable_top = params.fine_tune_top
+        trainable_fe = params.fine_tune_fe
+    image_embeddings = vgg16(image_f_inputs2,
+                             trainable_fe=trainable_fe,
+                             trainable_top=trainable_top)
     if params.fine_tune:
         features = image_embeddings.fc2
     else:
@@ -197,7 +204,7 @@ def main(params):
                                                   grads_vars,
                                                   global_step=global_step)
     # model restore
-    saver = tf.train.Saver(tf.trainable_variables(),
+    saver = tf.train.Saver(tf.trainable_variables() + image_embeddings.parameters,
                            max_to_keep=params.max_checkpoints_to_keep)
     # m_builder = tf.saved_model.builder.SavedModelBuilder('./saved_model')
     config = tf.ConfigProto()
@@ -205,10 +212,6 @@ def main(params):
     with tf.Session(config=config) as sess:
         sess.run([tf.global_variables_initializer(),
                   tf.local_variables_initializer()])
-        if params.restore:
-            print("Restoring from checkpoint")
-            saver.restore(sess, "./checkpoints/{}.ckpt".format(
-                params.checkpoint))
         # train using batch generator, every iteration get
         # f(I), [batch_size, max_seq_len], seq_lengths
         if params.mode == "training":
@@ -217,9 +220,13 @@ def main(params):
                                                        sess.graph)
                 summary_writer.add_graph(sess.graph)
             if not params.restore:
-                print("Loading imagenet weights, which will futher be used")
+                print("Loading imagenet weights for futher usage")
                 image_embeddings.load_weights(params.image_net_weights_path,
                                               sess)
+            if params.restore:
+                print("Restoring from checkpoint")
+                saver.restore(sess, "./checkpoints/{}.ckpt".format(
+                    params.checkpoint))
             # print(tf.trainable_variables())
             for e in range(params.num_epochs):
                 gs = tf.train.global_step(sess, global_step)
@@ -242,6 +249,7 @@ def main(params):
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
+
                         gs = tf.train.global_step(sess, global_step)
                         feed.update({anneal: gs})
                         kl, rl, lb, _, ann = sess.run([kld, rec_loss,
@@ -292,7 +300,7 @@ def main(params):
                     params.checkpoint))
                 print("Model saved in file: %s" % save_path)
         # builder.add_meta_graph_and_variables(sess, ["main_model"])
-        if params.usehdf5 and params.fine_tune:
+        if params.use_hdf5 and params.fine_tune:
             batch_gen.h5f.close()
         # run inference
         if params.mode == "inference":
@@ -300,12 +308,13 @@ def main(params):
             saver.restore(sess, "./checkpoints/{}.ckpt".format(
                 params.checkpoint))
             # validation set
+            if not params.fine_tune:
+                print("Using prepared features for generation. If you want to "
+                      "use fine-tuned VGG16 feature extractor, need to specify "
+                      "--fine_tune parameter.")
             captions_gen = []
             print("Generating captions for val file")
             acc, caps = [], []
-            # for efficiency
-            val_gen._batch_size = 1000
-            test_gen._batch_size = 1000
             for f_images_batch, _, _, image_ids, c_v in val_gen.next_val_batch(
                 get_image_ids=True, use_obj_vectors=params.use_c_v):
                 if params.use_c_v or (

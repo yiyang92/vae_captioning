@@ -281,7 +281,7 @@ class Batch_Generator():
             np.array of shape [batch_size, 224, 224, 3]
         """
         if self.use_hdf5:
-            # must be in increasing order
+            # indices must be in an increasing order
             return self.images[indices]
         else:
             images = []

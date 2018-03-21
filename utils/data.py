@@ -67,7 +67,8 @@ class Data():
             self.train_batch_gen = Batch_Generator(self.train_dir,
                                                   self.train_cap_json,
                                                   self.captions_tr,
-                                                  batch_size,use_hdf5=True,
+                                                  batch_size,
+                                                  use_hdf5=self.params.use_hdf5,
                                                   hdf5_file=self.params.hdf5_file,
                                                   feature_dict=None)
         else:

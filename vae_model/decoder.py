@@ -131,7 +131,6 @@ class Decoder():
             cap_raw: list of generated caption indices
         """
         # get stop word index from dictionary
-        # TODO: if <UNK> redo?
         stop_word_idx = self.data_dict.word2idx['<EOS>']
         cap_list = [None] * in_pictures.shape[0]
         with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):

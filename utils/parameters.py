@@ -1,6 +1,5 @@
 class Parameters():
     # general parameters
-    fine_tune = False
     latent_size = 150
     num_clusters = 90 # 80 in mscoco, + 10 as mscoco objeect ids from 0-90
     num_epochs = 20
@@ -36,20 +35,25 @@ class Parameters():
     no_encoder = False
     vocab_size = None # need to be set during data load
     coco_dir = "/home/luoyy16/datasets-large/mscoco/coco/"
+    # fine-tuning
     hdf5_file = coco_dir + "train_val.hdf5" # file contains val+train images
-    usehdf5 = True
-    gen_name = "00"
+    use_hdf5 = True
+    fine_tune = False
+    fine_tune_top = True # fine-tune CNN top layer
+    fine_tune_fe = False # fine-tune bottom layers
+    # inference
+    gen_name = "00" # names will be like val_<gen_name>.json
     checkpoint = "last_run"
     num_epochs_per_decay = 5
     use_c_v = False
     # preprocessing
-    gen_val_captions = 4000 # set -1 to generate captions on a full dataset
+    gen_val_captions = 4000 # set -1 to generate captions on a original dataset
     keep_words = 3 # minimal time of word occurence
     cap_max_length = 100 # maximum length of caption, more will be clipped
     prior = 'Normal' # Normal, GMM, AG. Priors for CVAE model
     max_checkpoints_to_keep = 5
     mode = 'training' # training or inference
-    num_ex_per_epoch = 150000 # 586363 for im2txt
+    num_ex_per_epoch = 150000 # 586363 for im2txt, number examples per epoch
     image_net_weights_path = './utils/vgg16_weights.npz'
     logging = False
     def parse_args(self):
