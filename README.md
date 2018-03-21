@@ -1,15 +1,26 @@
-# Use Variational Auto-Encoder to generate captions
+# Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space
 
 ## Overview
  Tensorflow Implementation of [Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space, (Nips)](https://papers.nips.cc/paper/7158-diverse-and-accurate-image-description-using-a-variational-auto-encoder-with-an-additive-gaussian-encoding-space.pdf)
+In this implementation included VGG16-LSTM baseline with beam search, Normal prior CVAE,
+ GMM prior CVAE and AG-CVAE.
 
 ## Usage
 
 Training:
-Just launch the training script:
+
+Specify your mscoco directory in utils/parmeters.py and launch:
 ```shell=
 python main.py --gpu 'your gpu'
 ```
+It will train Normal CVAE prior model without fine-tuning, the best achieved result with using
+cluster vectors without fine-tuning is CIDER~0.8. Better results will be possible with some fine-tuning.
+If you want to train a model with fine-tuning, you can specify --fine_tune parameter.
+
+Note: train/validation split can be changed simply by setting gen_val_captions parameter. Default is set to 4000 so we will have ~120000 in training set.
+
+Note2: I had some struggles with current CNN fine-tune implementation, it seems doesnt train good. You will need to launch preprocess.py script first to obtain images hdf5 file. It is done for speed up image loading during actual training.
+
 ### Parameters
 Parameters can be set directly in in utils/parameters.py file.
 (or specify through command line parameters).
@@ -19,6 +30,21 @@ python main.py --gpu 0 --embed_dim 256 --dec_hid 512 --epochs 50 --temperature 0
 ```
 
 ### Generation
+Two options:
+
+1) Using main.py
+
+After some training just launch:
+```shell=
+python main.py --gpu 'your gpu' --mode inference
+```
+If you used fine-tuning will need just to add --fine_tune to the parameters:
+```shell=
+python main.py --gpu 'your gpu' --mode inference --fine_tune
+```
+
+2) Using separate gen_caption.py script. It doesnt support fine-tuned model for now (will be modified soon)
+
 For list of required parameters:
 ```shell=
 python gen_caption.py -h
