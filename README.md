@@ -10,6 +10,7 @@ In this implementation included VGG16-LSTM baseline with beam search, Normal pri
 Training:
 
 You will need to download image net weights for VGG16 first:https://yadi.sk/d/V6Rfzfei3TdKCH
+
 Specify your mscoco directory in utils/parmeters.py and launch:
 ```shell=
 python main.py --gpu 'your gpu'
