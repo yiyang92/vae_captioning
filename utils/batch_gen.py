@@ -184,7 +184,7 @@ class Batch_Generator():
                 images, cl_v = self._images_c_v(imn_batch, c_v, indices)
                 # concatenate to obtain [images, caption_indices, lengths]
                 inp_captions, l_captions, lengths = self._form_captions_batch(
-                    imn_batch)
+                    imn_batch, True)
                 yield images, (inp_captions, l_captions), lengths, cl_v
                 imn_batch = [None] * self._batch_size
         if imn_batch[0]:
@@ -194,18 +194,8 @@ class Batch_Generator():
                 imn_batch, indices = self._get_indices(imn_batch)
             images, cl_v = self._images_c_v(imn_batch, c_v, indices)
             inp_captions, l_captions, lengths = self._form_captions_batch(
-                imn_batch)
+                imn_batch, True)
             yield images, (inp_captions, l_captions), lengths, cl_v
-            # images, cl_v = self._images_c_v(imn_batch, c_v, indices)
-            # # concatenate to obtain [images, caption_indices, lengths]
-            # inp_captions, l_captions, lengths = self._form_captions_batch(
-            #     imn_batch)
-            # if self.get_image_ids:
-            #     image_ids = self._get_imid(imn_batch)
-            #     yield images, (inp_captions,
-            #                    l_captions), lengths, image_ids, cl_v
-            # else:
-            #     yield images, (inp_captions, l_captions), lengths, cl_v
 
     def _test_images_to_imid(self):
         with open(self._train_cap_json) as rf:
@@ -290,11 +280,13 @@ class Batch_Generator():
                 images.append(img)
             return np.stack(images)
 
-    def _form_captions_batch(self, imn_batch):
+    def _form_captions_batch(self, imn_batch, random_select=True,
+                             num_captions=5):
         """
         Args:
             imn_batch: image file names in the batch
             random_select: every time just choose random captions, not add all
+            num_captions: number of captions for every image
         Returns :
             list of np arrays [[batch_size, caption], [lengths]], where lengths have
             batch_size shape
@@ -303,32 +295,40 @@ class Batch_Generator():
         # calculate length of every sequence and make a list
         # randomly choose caption for the current iteration
         # use static array for efficiency
-        labels_captions_list = [None] * len(imn_batch)
-        input_captions_list = [None] * len(imn_batch)
-        lengths = np.zeros(len(imn_batch))
-        idx = 0
-        for fn in imn_batch:
-            # TODO: improve error handling when file is not correct
+        if random_select:
+            num_captions = 1
+        labels_captions_list = [[[0] for _ in range(
+            num_captions)] for j in range(len(imn_batch))]
+        input_captions_list = [[[0] for _ in range(
+            num_captions)] for j in range(len(imn_batch))]
+        lengths = np.zeros((len(imn_batch), num_captions))
+        for idx, fn in enumerate(imn_batch):
             fn = fn.split('/')[-1]
-            try:
-                caption = self.captions[fn][np.random.randint(
-                    len(self.captions[fn]))]
-            except:
-                # validation captions, maybe find better way to process?
-                caption = self.val_captions[fn][np.random.randint(
-                    len(self.val_captions[fn]))]
+            captions = self.captions[fn]
+            if len(captions) == 0: # using defaultdict will not give error
+                captions = self.val_captions[fn]
+            if random_select:
+                captions = [captions[np.random.randint(len(captions))]]
             # split into labels/inputs (encoder/decoder inputs)
-            input_captions_list[idx] = caption[:-1] # <BOS>...
-            labels_captions_list[idx] = caption[1:] # ...<EOS>
-            lengths[idx] = len(input_captions_list[idx])
-            idx += 1
+            for i, caption in enumerate(captions):
+                if i > num_captions: # limit number of captions
+                    break
+                input_captions_list[idx][i] = caption[:-1] # <BOS>...
+                labels_captions_list[idx][i] = caption[1:] # ...<EOS>
+                lengths[idx][i] = len(caption) - 1
         # add padding and put captions into np array of shape [batch_size,
-        # max_batch_seq_len]
-        pad = len(max(input_captions_list, key=len))
-        input_captions_list = np.array([
-            cap + [0] * (pad - len(cap)) for cap in input_captions_list])
-        labels_captions_list = np.array([
-            cap + [0] * (pad - len(cap)) for cap in labels_captions_list])
+        # [max_batch_seq_len]*num_captions]
+        pad = len(max([max(input_captions_list[i], key=len) for i in range(
+            len(input_captions_list))], key=len))
+        input_captions_list = np.array([[cap + [0] * (
+            pad - len(cap)) for cap in caps] for caps in input_captions_list])
+        labels_captions_list = np.array([[cap + [0] * (
+            pad - len(cap)) for cap in caps] for caps in labels_captions_list])
+        # if using random_select, temporary
+        if input_captions_list.shape[1] == 1:
+            input_captions_list = np.squeeze(input_captions_list, 1)
+            labels_captions_list = np.squeeze(labels_captions_list, 1)
+            lengths = np.squeeze(lengths)
         return input_captions_list, labels_captions_list, lengths
 
     def _get_cluster_vectors(self, load_test=False):

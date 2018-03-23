@@ -13,6 +13,7 @@ from utils.parameters import Parameters
 from utils.image_embeddings import vgg16
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
+from ops import inference, optimizers
 
 print("Tensorflow version: ", tf.__version__)
 
@@ -68,9 +69,10 @@ def main(params):
     if params.mode == 'training' and params.fine_tune:
         trainable_top = params.fine_tune_top
         trainable_fe = params.fine_tune_fe
-    image_embeddings = vgg16(image_f_inputs2,
-                             trainable_fe=trainable_fe,
-                             trainable_top=trainable_top)
+    with tf.variable_scope("cnn"):
+        image_embeddings = vgg16(image_f_inputs2,
+                                 trainable_fe=trainable_fe,
+                                 trainable_top=trainable_top)
     if params.fine_tune:
         features = image_embeddings.fc2
     else:
@@ -99,7 +101,8 @@ def main(params):
             encoder.c_i = c_i_emb
             encoder.c_i_ph = cl_vectors
     if not params.no_encoder:
-        qz, tm_list, tv_list = encoder.q_net()
+        with tf.variable_scope("encoder"):
+            qz, tm_list, tv_list = encoder.q_net()
         def init_clusters(num_clusters):
             # initialize sigma as constant, mu drawn randomly
             z_size = params.latent_size
@@ -171,38 +174,12 @@ def main(params):
     else:
         lower_bound = rec_loss
         kld = tf.constant(0.0)
-    # we need to maximize lower_bound
-    gradients = tf.gradients(lower_bound, tf.trainable_variables())
-    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
-    grads_vars = zip(clipped_grad, tf.trainable_variables())
-    # learning rate decay
-    learning_rate = tf.constant(params.learning_rate)
-    global_step = tf.Variable(initial_value=0, name="global_step",
-                              trainable=False,
-                              collections=[tf.GraphKeys.GLOBAL_STEP,
-                                           tf.GraphKeys.GLOBAL_VARIABLES])
-    num_batches_per_epoch = params.num_ex_per_epoch / (
-        params.batch_size + 0.001)
-    decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
-    learning_rate_decay = tf.train.exponential_decay(learning_rate,
-                                               global_step,
-                                               decay_steps=decay_steps,
-                                               decay_rate=0.5,
-                                               staircase=True)
-    if params.optimizer == 'SGD':
-        optimize = tf.train.GradientDescentOptimizer(
-            learning_rate_decay).apply_gradients(grads_vars,
-                                                 global_step=global_step)
-    elif params.optimizer == 'Adam':
-        optimize = tf.train.AdamOptimizer(
-            params.learning_rate, beta1=0.8).apply_gradients(grads_vars,
-                                                  global_step=global_step)
-    elif params.optimizer == 'Momentum':
-        momentum = 0.90
-        optimize = tf.train.MomentumOptimizer(learning_rate_decay,
-                                              momentum).apply_gradients(
-                                                  grads_vars,
-                                                  global_step=global_step)
+    # optimization
+    optimize, global_step = optimizers.non_cnn_optimizer(lower_bound, params)
+    optimize_cnn = tf.constant(0.0)
+    if params.fine_tune and params.mode == 'training':
+        optimize_cnn, _ = optimizers.cnn_optimizer(lower_bound, params)
+    # cnn parameters update
     # model restore
     saver = tf.train.Saver(tf.trainable_variables() + image_embeddings.parameters,
                            max_to_keep=params.max_checkpoints_to_keep)
@@ -244,17 +221,16 @@ def main(params):
                                 ann_inputs_enc: captions_batch[1],
                                 ann_inputs_dec: captions_batch[0],
                                 ann_lengths: cl_batch,
-                                anneal: gs,
-                                learning_rate: params.learning_rate}
+                                anneal: gs}
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
-
+                        # TODO: feed n captions at once by replicating features
                         gs = tf.train.global_step(sess, global_step)
                         feed.update({anneal: gs})
-                        kl, rl, lb, _, ann = sess.run([kld, rec_loss,
-                                                       lower_bound,
-                                                       optimize, annealing],
+                        kl, rl, lb, _,_, ann = sess.run([kld, rec_loss,
+                                                       lower_bound, optimize,
+                                                       optimize_cnn, annealing],
                                                       feed)
                         gs_epoch += 1
                         if gs % 500 == 0:
@@ -304,57 +280,8 @@ def main(params):
             batch_gen.h5f.close()
         # run inference
         if params.mode == "inference":
-            print("Restoring from checkpoint")
-            saver.restore(sess, "./checkpoints/{}.ckpt".format(
-                params.checkpoint))
-            # validation set
-            if not params.fine_tune:
-                print("Using prepared features for generation. If you want to "
-                      "use fine-tuned VGG16 feature extractor, need to specify "
-                      "--fine_tune parameter.")
-            captions_gen = []
-            print("Generating captions for val file")
-            acc, caps = [], []
-            for f_images_batch, _, _, image_ids, c_v in val_gen.next_val_batch(
-                get_image_ids=True, use_obj_vectors=params.use_c_v):
-                if params.use_c_v or (
-                    params.prior == 'GMM' or params.prior == 'AG'):
-                    # 0 element doesnt matter
-                    c_v = c_v[:, 1:]
-                if params.sample_gen == 'beam_search':
-                    sent = decoder.beam_search(sess, image_ids, f_images_batch,
-                                               image_f_inputs, c_v,
-                                               beam_size=params.beam_size)
-                else:
-                    sent, _ = decoder.online_inference(sess, image_ids,
-                                                       f_images_batch,
-                                                       image_f_inputs, c_v=c_v)
-                captions_gen += sent
-            print("Generated {} captions".format(len(captions_gen)))
-            val_gen_file = "./val_{}.json".format(params.gen_name)
-            if os.path.exists(val_gen_file):
-                print("Exists ", val_gen_file)
-                os.remove(val_gen_file)
-            with open(val_gen_file, 'w') as wj:
-                print("saving val json file into ", val_gen_file)
-                json.dump(captions_gen, wj)
-            # test set
-            captions_gen = []
-            print("Generating captions for test file")
-            for f_images_batch, image_ids, c_v in test_gen.next_test_batch(
-                params.use_c_v):
-                if params.use_c_v:
-                    c_v = c_v[:, 1:]
-                sent, _ = decoder.online_inference(sess, image_ids,
-                                                   f_images_batch,
-                                                   image_f_inputs, c_v=c_v)
-                captions_gen += sent
-            test_gen_file = "./test_{}.json".format(params.gen_name)
-            if os.path.exists(test_gen_file):
-                os.remove(test_gen_file)
-            with open(test_gen_file, 'w') as wj:
-                print("saving test json file into", test_gen_file)
-                json.dump(captions_gen, wj)
+            inference.inference(params, decoder, val_gen,
+                                test_gen, image_f_inputs, saver, sess)
 
 if __name__ == '__main__':
     params = Parameters()

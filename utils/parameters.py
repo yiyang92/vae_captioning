@@ -40,7 +40,9 @@ class Parameters():
     use_hdf5 = True
     fine_tune = False
     fine_tune_top = True # fine-tune CNN top layer
-    fine_tune_fe = False # fine-tune bottom layers
+    fine_tune_fe = True # fine-tune bottom layers
+    cnn_lr = 0.00001
+    cnn_optimizer = 'Adam' # SGD, Adam, Momentum
     # inference
     gen_name = "00" # names will be like val_<gen_name>.json
     checkpoint = "last_run"
