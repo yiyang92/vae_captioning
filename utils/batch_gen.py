@@ -161,16 +161,23 @@ class Batch_Generator():
         imn_batch, indices = list(zip(*imn_index)) # return tuples
         return list(imn_batch), list(indices)
 
-    def next_batch(self, get_image_ids = False, use_obj_vectors=False):
-        self.get_image_ids = get_image_ids
+    def next_batch(self, use_obj_vectors=False, num_captions=1):
+        """
+        Args:
+            use_obj_vectors: whether or not include object vectors
+            num_captions: number of captions, if 1 will return randomly
+        selected caption. All captions are padded to maximum length of the batch
+        """
         # separately specify whether to use cluster obj_vectors
         self.use_obj_vectors = use_obj_vectors
         if self.use_obj_vectors:
             c_v = self._get_cluster_vectors()
         else:
             c_v = None
-        #batches_per_set = len(self._iterable) // self._batch_size
-        #for _ in range(batches_per_set):
+        # if select inly one caption
+        random_select = False
+        if num_captions == 1:
+            random_select = True
         # separately specify whether to use cluster obj_vectors
         imn_batch  = [None] * self._batch_size
         shuffle(self._iterable)
@@ -184,7 +191,7 @@ class Batch_Generator():
                 images, cl_v = self._images_c_v(imn_batch, c_v, indices)
                 # concatenate to obtain [images, caption_indices, lengths]
                 inp_captions, l_captions, lengths = self._form_captions_batch(
-                    imn_batch, True)
+                    imn_batch, random_select, num_captions)
                 yield images, (inp_captions, l_captions), lengths, cl_v
                 imn_batch = [None] * self._batch_size
         if imn_batch[0]:
@@ -194,7 +201,7 @@ class Batch_Generator():
                 imn_batch, indices = self._get_indices(imn_batch)
             images, cl_v = self._images_c_v(imn_batch, c_v, indices)
             inp_captions, l_captions, lengths = self._form_captions_batch(
-                imn_batch, True)
+                imn_batch, random_select, num_captions)
             yield images, (inp_captions, l_captions), lengths, cl_v
 
     def _test_images_to_imid(self):
@@ -281,7 +288,7 @@ class Batch_Generator():
             return np.stack(images)
 
     def _form_captions_batch(self, imn_batch, random_select=True,
-                             num_captions=5):
+                             num_captions=1):
         """
         Args:
             imn_batch: image file names in the batch
@@ -311,7 +318,7 @@ class Batch_Generator():
                 captions = [captions[np.random.randint(len(captions))]]
             # split into labels/inputs (encoder/decoder inputs)
             for i, caption in enumerate(captions):
-                if i > num_captions: # limit number of captions
+                if i >= num_captions: # limit number of captions
                     break
                 input_captions_list[idx][i] = caption[:-1] # <BOS>...
                 labels_captions_list[idx][i] = caption[1:] # ...<EOS>

@@ -4,7 +4,9 @@ class Parameters():
     num_clusters = 90 # 80 in mscoco, + 10 as mscoco objeect ids from 0-90
     num_epochs = 20
     learning_rate = 0.001
+    num_captions = 5 # every iteration use how many captions for one image (1-5)
     batch_size = 128 # for no encoder use bs=30 and SGD with lr 2
+    cnn_feature_size = 4096 # vgg16 fc2 output shape
     # for decoding
     temperature = 1.0
     # if greedy, choose word with the highest prob;
@@ -42,7 +44,8 @@ class Parameters():
     fine_tune_top = True # fine-tune CNN top layer
     fine_tune_fe = True # fine-tune bottom layers
     cnn_lr = 0.00001
-    cnn_optimizer = 'Adam' # SGD, Adam, Momentum
+    cnn_optimizer = 'Adam' # SGD, Adam, Momentum'
+    cnn_dropout = 0.5 # cnn dropout keep_rate
     # inference
     gen_name = "00" # names will be like val_<gen_name>.json
     checkpoint = "last_run"

@@ -13,8 +13,9 @@ import numpy as np
 
 class vgg16:
     def __init__(self, imgs, weight_file=None, sess=None,
-                 trainable_fe=False, trainable_top=False):
+                 trainable_fe=False, trainable_top=False, dropout_keep=1.0):
         self.imgs = imgs
+        self.dropout_keep = dropout_keep
         self.trainable_fe = trainable_fe
         self.trainable_top = trainable_top
         self.convlayers()
@@ -237,7 +238,7 @@ class vgg16:
             fc1l = tf.nn.bias_add(tf.matmul(pool5_flat, fc1w), fc1b)
             self.fc1 = tf.nn.relu(fc1l)
             if self.trainable_top:
-                self.fc1 = tf.nn.dropout(self.fc1, 0.5)
+                self.fc1 = tf.nn.dropout(self.fc1, self.dropout_keep)
             self.parameters += [fc1w, fc1b]
 
         # fc2
@@ -251,7 +252,7 @@ class vgg16:
             fc2l = tf.nn.bias_add(tf.matmul(self.fc1, fc2w), fc2b)
             self.fc2 = tf.nn.relu(fc2l)
             if self.trainable_top:
-                self.fc2 = tf.nn.dropout(self.fc2, 0.5)
+                self.fc2 = tf.nn.dropout(self.fc2, self.dropout_keep)
             self.parameters += [fc2w, fc2b]
 
     def load_weights(self, weight_file, sess):

@@ -1,7 +1,6 @@
 import os
 import json
 import numpy as np
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # ERROR
 import tensorflow as tf
 import zhusuan as zs
 from tensorflow import layers
@@ -11,6 +10,8 @@ from utils.data import Data
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 from utils.parameters import Parameters
 from utils.image_embeddings import vgg16
+from utils.caption_utils import preprocess_captions
+# vae model
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
 from ops import inference, optimizers
@@ -72,11 +73,19 @@ def main(params):
     with tf.variable_scope("cnn"):
         image_embeddings = vgg16(image_f_inputs2,
                                  trainable_fe=trainable_fe,
-                                 trainable_top=trainable_top)
+                                 trainable_top=trainable_top,
+                                 dropout_keep=params.cnn_dropout)
     if params.fine_tune:
         features = image_embeddings.fc2
     else:
         features = image_batch
+    # forward pass is expensive, so can use this method to reduce computation
+    if params.num_captions > 1 and params.mode == 'training': #[batch_size, 4096]
+        features_tiled = tf.tile(tf.expand_dims(features, 1),
+                                 [1, params.num_captions, 1])
+        features = tf.reshape(features_tiled,
+                              [tf.shape(features)[0] * params.num_captions,
+                               params.cnn_feature_size])
     # dictionary
     cap_dict = data.dictionary
     params.vocab_size = cap_dict.vocab_size
@@ -216,7 +225,11 @@ def main(params):
                         return False
                     for f_images_batch,\
                     captions_batch, cl_batch, c_v in batch_gen.next_batch(
-                        use_obj_vectors=params.use_c_v):
+                        use_obj_vectors=params.use_c_v,
+                        num_captions=params.num_captions):
+                        if params.num_captions > 1:
+                            captions_batch, cl_batch, c_v = preprocess_captions(
+                                captions_batch, cl_batch, c_v)
                         feed = {image_f_inputs: f_images_batch,
                                 ann_inputs_enc: captions_batch[1],
                                 ann_inputs_dec: captions_batch[0],
@@ -225,7 +238,6 @@ def main(params):
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
-                        # TODO: feed n captions at once by replicating features
                         gs = tf.train.global_step(sess, global_step)
                         feed.update({anneal: gs})
                         kl, rl, lb, _,_, ann = sess.run([kld, rec_loss,
@@ -251,8 +263,12 @@ def main(params):
                 val_vlb, val_rec = [], []
                 def validate():
                     for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
-                        use_obj_vectors=params.use_c_v):
+                        use_obj_vectors=params.use_c_v,
+                        num_captions=params.num_captions):
                         gs = tf.train.global_step(sess, global_step)
+                        if params.num_captions > 1:
+                            captions_batch, cl_batch, c_v = preprocess_captions(
+                                captions_batch, cl_batch, c_v)
                         feed = {image_f_inputs: f_images_batch,
                                 ann_inputs_enc: captions_batch[1],
                                 ann_inputs_dec: captions_batch[0],
