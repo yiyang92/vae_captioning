@@ -225,7 +225,10 @@ class Batch_Generator():
             inx = i % self._batch_size
             imn_batch[inx] = item
             if inx == self._batch_size - 1:
-                images, cl_v = self._images_c_v(imn_batch, c_v)
+                indices = None
+                if self.use_hdf5:
+                    imn_batch, indices = self._get_indices(imn_batch)
+                images, cl_v = self._images_c_v(imn_batch, c_v, indices)
                 # concatenate to obtain [images, caption_indices, lengths]
                 inp_captions, l_captions, lengths = self._form_captions_batch(
                     imn_batch)
@@ -238,7 +241,10 @@ class Batch_Generator():
                 imn_batch = [None] * self._batch_size
         if imn_batch[0]:
             imn_batch = [item for item in imn_batch if item]
-            images, cl_v = self._images_c_v(imn_batch, c_v)
+            indices = None
+            if self.use_hdf5:
+                imn_batch, indices = self._get_indices(imn_batch)
+            images, cl_v = self._images_c_v(imn_batch, c_v, indices)
             inp_captions, l_captions, lengths = self._form_captions_batch(
                 imn_batch)
             if self.get_image_ids:

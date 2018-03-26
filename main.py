@@ -62,19 +62,19 @@ def main(params):
     # features, params.fine_tune stands for not using presaved imagenet weights
     # here, used this dummy placeholder during fine_tune, will remove it in
     # future releases, thats for saving image_net weights for futher usage
-    image_f_inputs2 = tf.zeros([0, 224, 224, 3])
-    trainable_top = False
-    trainable_fe = False
+    image_f_inputs2 = tf.placeholder_with_default(
+        tf.ones([1, 224, 224, 3]), shape=[None, 224, 224, 3], name='dummy_ps')
     if params.fine_tune:
         image_f_inputs2 = image_batch
     if params.mode == 'training' and params.fine_tune:
-        trainable_top = params.fine_tune_top
-        trainable_fe = params.fine_tune_fe
+        cnn_dropout = params.cnn_dropout
+    else:
+        cnn_dropout = 1.0
     with tf.variable_scope("cnn"):
         image_embeddings = vgg16(image_f_inputs2,
-                                 trainable_fe=trainable_fe,
-                                 trainable_top=trainable_top,
-                                 dropout_keep=params.cnn_dropout)
+                                 trainable_fe=params.fine_tune_fe,
+                                 trainable_top=params.fine_tune_top,
+                                 dropout_keep=cnn_dropout)
     if params.fine_tune:
         features = image_embeddings.fc2
     else:
@@ -91,6 +91,8 @@ def main(params):
     params.vocab_size = cap_dict.vocab_size
     # image features [b_size + f_size(4096)] -> [b_size + embed_size]
     images_fv = layers.dense(features, params.embed_size, name='imf_emb')
+    # images_fv = tf.Print(images_fv, [tf.shape(features), features[0][0:10],
+    #                                   image_embeddings.imgs[0][:10], images_fv])
     # encoder, input fv and ...<BOS>,get z
     if not params.no_encoder:
         encoder = Encoder(images_fv, cap_enc, cap_len, params)
@@ -163,12 +165,11 @@ def main(params):
     ce_loss_padded = tf.nn.sparse_softmax_cross_entropy_with_logits(
         logits=x_logits, labels=labels_flat)
     loss_mask = tf.sign(tf.to_float(labels_flat))
-    masked_loss = loss_mask * ce_loss_padded
-    # restore original shape
-    masked_loss = tf.reshape(masked_loss, tf.shape(cap_enc))
-    mean_loss_by_example = tf.reduce_sum(
-        masked_loss, 1) / tf.to_float(cap_len)
-    rec_loss = tf.reduce_mean(mean_loss_by_example)
+    batch_loss = tf.div(tf.reduce_sum(tf.multiply(ce_loss_padded, loss_mask)),
+                          tf.reduce_sum(loss_mask),
+                          name="batch_loss")
+    tf.losses.add_loss(batch_loss)
+    rec_loss = tf.losses.get_total_loss()
     # kld weight annealing
     anneal = tf.placeholder_with_default(0, [])
     if params.fine_tune:
@@ -190,7 +191,11 @@ def main(params):
         optimize_cnn, _ = optimizers.cnn_optimizer(lower_bound, params)
     # cnn parameters update
     # model restore
-    saver = tf.train.Saver(tf.trainable_variables() + image_embeddings.parameters,
+    vars_to_save = tf.trainable_variables()
+    if not params.fine_tune_fe or not params.fine_tune_top:
+        cnn_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'cnn')
+        vars_to_save += cnn_vars
+    saver = tf.train.Saver(vars_to_save,
                            max_to_keep=params.max_checkpoints_to_keep)
     # m_builder = tf.saved_model.builder.SavedModelBuilder('./saved_model')
     config = tf.ConfigProto()
@@ -240,6 +245,8 @@ def main(params):
                             feed.update({c_i: c_v[:, 1:]})
                         gs = tf.train.global_step(sess, global_step)
                         feed.update({anneal: gs})
+                        # if gs_epoch == 0:
+                        # print(sess.run(debug_print, feed))
                         kl, rl, lb, _,_, ann = sess.run([kld, rec_loss,
                                                        lower_bound, optimize,
                                                        optimize_cnn, annealing],
@@ -267,8 +274,8 @@ def main(params):
                         num_captions=params.num_captions):
                         gs = tf.train.global_step(sess, global_step)
                         if params.num_captions > 1:
-                            captions_batch, cl_batch, c_v = preprocess_captions(
-                                captions_batch, cl_batch, c_v)
+                            captions_batch, cl_batch, c_v= preprocess_captions(
+                                captions_batch, cl_batch,c_v)
                         feed = {image_f_inputs: f_images_batch,
                                 ann_inputs_enc: captions_batch[1],
                                 ann_inputs_dec: captions_batch[0],

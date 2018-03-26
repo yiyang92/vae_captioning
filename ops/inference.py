@@ -31,7 +31,7 @@ def inference(params, decoder, val_gen, test_gen, image_f_inputs, saver, sess):
     print("Generated {} captions".format(len(captions_gen)))
     val_gen_file = "./val_{}.json".format(params.gen_name)
     if os.path.exists(val_gen_file):
-        print("Exists ", val_gen_file)
+        print("Exists {}, delete it".format(val_gen_file))
         os.remove(val_gen_file)
         print(os.listdir('.'))
     with open(val_gen_file, 'w') as wj:

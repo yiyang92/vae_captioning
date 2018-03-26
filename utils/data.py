@@ -145,7 +145,9 @@ class Data():
                                               val_batch_size,
                                               feature_dict=valid_feature_dict,
                                               get_image_ids=True,
-                                              val_tr_unused=val_tr_unused)
+                                              val_tr_unused=val_tr_unused,
+                                              use_hdf5=self.params.use_hdf5,
+                                              hdf5_file=self.params.hdf5_file)
         return self.valid_batch_gen
 
     def get_test_data(self, test_batch_size=None, pretrained=True):

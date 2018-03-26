@@ -11,7 +11,7 @@ Training:
 
 You will need to download image net weights for VGG16 first:https://yadi.sk/d/V6Rfzfei3TdKCH
 
-Specify your mscoco directory in utils/parmeters.py and launch:
+Specify your mscoco directory in utils/parameters.py and launch:
 ```shell=
 python main.py --gpu 'your gpu'
 ```
@@ -21,7 +21,7 @@ If you want to train a model with fine-tuning, you can specify --fine_tune param
 
 Note: train/validation split can be changed simply by setting gen_val_captions parameter. Default is set to 4000 so we will have ~120000 in training set.
 
-Note2: I had some struggles with current CNN fine-tune implementation, it seems doesnt train good. You will need to launch preprocess.py script first to obtain images hdf5 file. It is done for speed up image loading during actual training.
+Note2: You will need to launch preprocess.py script first to obtain images hdf5 file. It is done for speed up image loading during fine-tuning the model.
 
 ### Parameters
 Parameters can be set directly in in utils/parameters.py file.
@@ -44,8 +44,9 @@ If you used fine-tuning will need just to add --fine_tune to the parameters:
 ```shell=
 python main.py --gpu 'your gpu' --mode inference --fine_tune
 ```
+It will produce json file ready to use with [mscoco evaluation tool](https://github.com/tylin/coco-caption)
 
-2) Using separate gen_caption.py script. It doesnt support fine-tuned model for now (will be modified soon)
+2) Using separate gen_caption.py script. It doesnt support fine-tuned model for now (will be modified soon). Can be used to generate captions for any images.
 
 For list of required parameters:
 ```shell=
@@ -73,10 +74,11 @@ https://yadi.sk/d/TCyXUmKk3SPVtc
 - AG-CVAE (partially implemented)
 - GMM-CVAE (implemented)
 - Caption generation for new photos (partially implemented, will need to automate cluster vectors generation process)
-- fine_tune for better result (in progress)
+- fine_tune for better result (implemented)
 
 ### Specific requirements
 - zhusuan - probabilistic framework https://github.com/thu-ml/zhusuan/
+I used 0.3.0 version, it seems not working with 0.3.1 version.
 - tensorflow >= 1.4.1
 
 ### Other files

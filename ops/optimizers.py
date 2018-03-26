@@ -11,8 +11,8 @@ def non_cnn_optimizer(loss, params):
     if not params.no_encoder:
         other_vars += encoder_vars
     gradients = tf.gradients(loss, other_vars)
-    clipped_grad = clip_by_value(gradients, -0.1, 0.1)
-    #clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
+    # clipped_grad = clip_by_value(gradients, -0.1, 0.1)
+    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
     grads_vars = zip(clipped_grad, other_vars)
     # learning rate decay
     learning_rate = tf.constant(params.learning_rate)
@@ -48,8 +48,8 @@ def non_cnn_optimizer(loss, params):
 def cnn_optimizer(loss, params):
     cnn_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'cnn')
     gradients = tf.gradients(loss, cnn_vars)
-    #clipped_grad, _ = tf.clip_by_global_norm(gradients, 2.0)
-    clipped_grad = clip_by_value(gradients, -0.1, 0.1)
+    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
+    # clipped_grad = clip_by_value(gradients, -0.1, 0.1)
     grads_vars = zip(clipped_grad, cnn_vars)
     # learning rate decay
     learning_rate = tf.constant(params.cnn_lr)
@@ -72,7 +72,7 @@ def cnn_optimizer(loss, params):
                                                  global_step=global_step)
     elif params.cnn_optimizer == 'Adam':
         optimize = tf.train.AdamOptimizer(
-            params.learning_rate, beta1=0.8).apply_gradients(grads_vars,
+            params.cnn_lr, beta1=0.8).apply_gradients(grads_vars,
                                                   global_step=global_step)
     elif params.cnn_optimizer == 'Momentum':
         momentum = 0.90
