@@ -12,7 +12,8 @@ def non_cnn_optimizer(loss, params):
         other_vars += encoder_vars
     gradients = tf.gradients(loss, other_vars)
     # clipped_grad = clip_by_value(gradients, -0.1, 0.1)
-    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
+    clipped_grad, global_norm = tf.clip_by_global_norm(gradients,
+                                                       params.lstm_clip_by_norm)
     grads_vars = zip(clipped_grad, other_vars)
     # learning rate decay
     learning_rate = tf.constant(params.learning_rate)
@@ -43,14 +44,12 @@ def non_cnn_optimizer(loss, params):
                                               momentum).apply_gradients(
                                                   grads_vars,
                                                   global_step=global_step)
-    return optimize, global_step
+    return optimize, global_step, global_norm
 # fine-tuning CNN
 def cnn_optimizer(loss, params):
     cnn_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'cnn')
     gradients = tf.gradients(loss, cnn_vars)
-    clipped_grad, _ = tf.clip_by_global_norm(gradients, 5.0)
-    # clipped_grad = clip_by_value(gradients, -0.1, 0.1)
-    grads_vars = zip(clipped_grad, cnn_vars)
+    grads_vars = zip(gradients, cnn_vars)
     # learning rate decay
     learning_rate = tf.constant(params.cnn_lr)
     global_step = tf.Variable(initial_value=0, name="global_step",

@@ -3,17 +3,18 @@ class Parameters():
     latent_size = 150
     num_clusters = 90 # 80 in mscoco, + 10 as mscoco objeect ids from 0-90
     num_epochs = 20
-    learning_rate = 0.001
+    learning_rate = 0.0005
     num_captions = 5 # every iteration use how many captions for one image (1-5)
-    batch_size = 128 # for no encoder use bs=30 and SGD with lr 2
+    batch_size = 32 # proved to be quite good
     cnn_feature_size = 4096 # vgg16 fc2 output shape
     # for decoding
     temperature = 1.0
     # if greedy, choose word with the highest prob;
     # if sample, sample from multinullli distribution
     # sample_gen = 'greedy' # 'greedy', 'sample', 'beam_search'
-    sample_gen = 'beam_search'
+    sample_gen = 'beam_search' # set to greedy if you want faster see results
     # beam search
+    # will take very long time, but was set according to papers baselines
     beam_size = 10
     # encoder
     encoder_rnn_layers = 1
@@ -28,7 +29,8 @@ class Parameters():
     gen_z_samples = 20 # according to paper (Diverse cap)
     ann_param = 5 # KL-divergence component weight in objective function
     dec_lstm_drop = 1.0
-    optimizer = 'SGD' # SGD, Adam, Momentum
+    optimizer = 'Adam' # SGD, Adam, Momentum
+    lstm_clip_by_norm = 5.0
     # restore?
     restore = False
     # technical parameters
@@ -46,6 +48,7 @@ class Parameters():
     cnn_lr = 0.00001
     cnn_optimizer = 'Adam' # SGD, Adam, Momentum'
     cnn_dropout = 0.5 # cnn dropout keep_rate
+    weight_decay = 0.00004 # L2-regularization for CNN parameters ||wtw||
     # inference
     gen_name = "00" # names will be like val_<gen_name>.json
     checkpoint = "last_run"

@@ -68,9 +68,12 @@ def main(params):
         image_f_inputs2 = image_batch
     if params.mode == 'training' and params.fine_tune:
         cnn_dropout = params.cnn_dropout
+        weights_regularizer = tf.contrib.layers.l2_regularizer(
+            params.weight_decay)
     else:
         cnn_dropout = 1.0
-    with tf.variable_scope("cnn"):
+        weights_regularizer = None
+    with tf.variable_scope("cnn", regularizer=weights_regularizer):
         image_embeddings = vgg16(image_f_inputs2,
                                  trainable_fe=params.fine_tune_fe,
                                  trainable_top=params.fine_tune_top,
@@ -121,9 +124,6 @@ def main(params):
             cluster_mu_matrix = []
             for id_cluster in range(params.num_clusters):
                 with tf.variable_scope("cl_init_mean_{}".format(id_cluster)):
-                    # cluster_item = tf.Variable(
-                    #     initial_value=2*tf.random_uniform([1, params.latent_size])\
-                    #      - 1, trainable=False) # used to generate initial means
                     cluster_item = 2*np.random.random_sample(
                         (1, params.latent_size)) - 1
                     cluster_item = cluster_item/(tf.sqrt(
@@ -135,22 +135,22 @@ def main(params):
             # kld between normal distributions KL(q, p), see Kingma et.al
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
-                    1 + (1e-8 + qz.distribution.logstd)
+                    1 + tf.log(tf.square(qz.distribution.std) + 0.00001)
                     - tf.square(qz.distribution.mean)
-                    - tf.exp(qz.distribution.logstd),1))
+                    - tf.square(qz.distribution.std), 1))
         elif params.prior == 'GMM':
             # initialize sigma as constant, mu drawn randomly
             # TODO: finish GMM loss implementation
             c_means, c_sigma = init_clusters(90)
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
-                    1 + (1e-8 + qz.distribution.logstd)
+                    1 + tf.log(tf.square(qz.distribution.std) + 0.00001)
                     - tf.square(qz.distribution.mean)
-                    - tf.exp(qz.distribution.logstd),1))
+                    - tf.square(qz.distribution.std), 1))
         elif params.prior == 'AG':
             c_means, c_sigma = init_clusters(90)
-            kld_clusters = 1 + tf.log(qz.distribution.std+ 0.0001)\
-             -  tf.log(c_sigma + 0.0001) - (
+            kld_clusters = 1 + tf.log(qz.distribution.std+ 0.00001)\
+             -  tf.log(c_sigma + 0.00001) - (
                  tf.square(qz.distribution.mean - tf.matmul(
                      tf.squeeze(c_i), c_means)) + tf.square(
                          qz.distribution.std))/(tf.square(c_sigma)+0.0000001)
@@ -184,8 +184,9 @@ def main(params):
     else:
         lower_bound = rec_loss
         kld = tf.constant(0.0)
-    # optimization
-    optimize, global_step = optimizers.non_cnn_optimizer(lower_bound, params)
+    # optimization, can print global norm for debugging
+    optimize, global_step, global_norm = optimizers.non_cnn_optimizer(lower_bound,
+                                                                      params)
     optimize_cnn = tf.constant(0.0)
     if params.fine_tune and params.mode == 'training':
         optimize_cnn, _ = optimizers.cnn_optimizer(lower_bound, params)
@@ -218,7 +219,6 @@ def main(params):
                 print("Restoring from checkpoint")
                 saver.restore(sess, "./checkpoints/{}.ckpt".format(
                     params.checkpoint))
-            # print(tf.trainable_variables())
             for e in range(params.num_epochs):
                 gs = tf.train.global_step(sess, global_step)
                 gs_epoch = 0

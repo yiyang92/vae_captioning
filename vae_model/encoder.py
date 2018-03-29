@@ -87,8 +87,6 @@ class Encoder():
                 lz_logstd = tf.gather_nd(tl_list, cluster)
 
             if self.params.prior == 'AG':
-                #clusters = tf.argmax(self.c_i_ph, 1)
-                # [batch_size, 150]?
                 # ck*N(mu, sigma)
                 for i in range(90):
                     with tf.variable_scope("ag_ll_{}".format(i)):
@@ -106,8 +104,6 @@ class Encoder():
                 c_i_exp = tf.expand_dims(self.c_i_ph, 1)
                 lz_mean = tf.squeeze(tf.matmul(c_i_exp, tm_list), 1)
                 lz_logstd = tf.squeeze(tf.matmul(c_i_exp, tl_list), 1)
-                # debug
-                #print(lz_mean)
             z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
         return z, tm_list, tl_list
