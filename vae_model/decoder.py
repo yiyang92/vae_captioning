@@ -27,10 +27,11 @@ class Decoder():
         self.params = params
         self.data_dict = data_dict
         # c_i - optional cluster_vectors, can be specified separately
-        self.c_i = None
+        self.c_i = None  # mapping to embedding dimension
         self.c_i_ph = None
+        self.cap_clusters = None
 
-    def px_z_fi(self, observed, gen_mode = False):
+    def px_z_fi(self, observed, gen_mode=False):
         """
         Args:
             observed: for q, parametrized by encoder, used during training
@@ -38,8 +39,38 @@ class Decoder():
             model: zhusuan model object, can be used for getting probabilities
         """
         with zs.BayesianNet(observed) as model:
-            z_mean = tf.zeros([tf.shape(self.images_fv)[0],
-                               self.params.latent_size])
+            if not gen_mode or self.params.prior != 'AG':
+                z_mean = tf.zeros([tf.shape(self.images_fv)[0],
+                                   self.params.latent_size])
+            elif self.params.prior == 'AG' and gen_mode:
+                # choose clusters (currently dont support batch of images)
+                # mean of clusters for the concrete image
+                c_indices = tf.where(self.c_i_ph[0] > 0)  # [num_true, indices]
+                pred = tf.equal(tf.shape(c_indices)[0], 0)
+                def false(): return tf.squeeze(tf.transpose(c_indices))
+                def true():
+                    # cl_range = tf.range(
+                        # tf.cast(tf.shape(self.cap_clusters)[0], tf.int64))
+                    # some classes are unused, dont condition on them
+                    # 0, 66, 68, 69, 71, 12, 45, 83, 26, 29, 30
+                    un_clusters = {0, 66, 68, 69, 71, 12, 45, 83, 26, 29, 30}
+                    cl_num = [i for i in range(self.params.num_clusters + 1)
+                              if i not in un_clusters]
+                    return tf.convert_to_tensor(cl_num, dtype=tf.int64)
+                c_indices = tf.cond(pred, true, false)
+                # cap_clusers=[num_clusters, num_z]
+                c_indices = tf.Print(c_indices, [tf.shape(c_indices),
+                                                 c_indices])
+                means = tf.gather(self.cap_clusters, c_indices, axis=0)
+                # if only one cluster (any better way?)
+                def false(): return means
+                def true(): return tf.expand_dims(means, 0)
+                pred = tf.equal(tf.shape(means)[0],
+                                tf.shape(self.cap_clusters)[1])
+                means = tf.cond(pred, true, false)
+                # find mean cluster for current picture
+                z_mean = tf.reduce_mean(means, axis=0)
+                z_mean = tf.reshape(z_mean, [1,self.params.latent_size])
             z = zs.Normal('z', mean=z_mean, std=self.params.std,
                           group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
@@ -69,7 +100,7 @@ class Decoder():
                     dtype=tf.float32)
                 # run this cell to get initial state
                 _, initial_state0 = cell_0(self.images_fv, zero_state0)
-                if self.c_i != None and self.params.use_c_v:
+                if self.c_i is not None and self.params.use_c_v:
                     _, initial_state0 = cell_0(self.c_i, initial_state0)
                 if self.params.no_encoder:
                     if not gen_mode:
@@ -84,9 +115,6 @@ class Decoder():
                     _, z_state = cell_0(z_dec, initial_state0)
                     initial_state = rnn_placeholders(z_state)
                 # captions LSTM
-                lengths = self.lengths
-                if gen_mode:
-                    lengths = None
                 outputs, final_state = tf.nn.dynamic_rnn(cell_0,
                                                          inputs=vect_inputs,
                                                          sequence_length=self.lengths,
@@ -171,7 +199,7 @@ class Decoder():
                     break
             cap_list[i]['caption'] = ' '.join([word for word in sentence
                                                if word not in ['<BOS>', '<EOS>']])
-            # print(cap_list[i]['caption'])
+            print(cap_list[i]['caption'])
         return cap_list, cap_raw
 
     def beam_search(self, sess, picture_ids, in_pictures, image_f_inputs,
@@ -243,7 +271,7 @@ class Decoder():
                 for i, partial_caption in enumerate(partial_captions_list):
                     cur_state = states_list[i]
                     cur_probs = probs_list[i]
-                    # sort list probs, enumerate to remember indices (I like python "_")
+                    # sort list probs, enumerate to remember indices
                     w_probs = list(enumerate(cur_probs.ravel()))
                     w_probs.sort(key=lambda x: -x[1])
                     # keep n probs

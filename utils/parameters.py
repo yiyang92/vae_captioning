@@ -27,7 +27,7 @@ class Parameters():
     embed_size = 256
     gen_max_len = 30
     gen_z_samples = 100  # according to paper (Diverse cap)
-    ann_param = 5  # KL-divergence component weight in objective function
+    ann_param = 0  # KL-divergence component weight in objective function
     dec_lstm_drop = 1.0
     optimizer = 'Adam'  # SGD, Adam, Momentum
     lstm_clip_by_norm = 5.0

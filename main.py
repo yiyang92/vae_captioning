@@ -7,6 +7,7 @@ from utils.data import Data
 from utils.parameters import Parameters
 from utils.image_embeddings import vgg16
 from utils.caption_utils import preprocess_captions
+from utils.vae_utils import init_clusters
 # vae model
 from vae_model.decoder import Decoder
 from vae_model.encoder import Encoder
@@ -114,21 +115,6 @@ def main(params):
     if not params.no_encoder:
         with tf.variable_scope("encoder"):
             qz, tm_list, tv_list = encoder.q_net()
-
-        def init_clusters(num_clusters):
-            # initialize sigma as constant, mu drawn randomly
-            c_sigma = tf.constant(0.1)
-            cluster_mu_matrix = []
-            for id_cluster in range(params.num_clusters):
-                with tf.variable_scope("cl_init_mean_{}".format(id_cluster)):
-                    cluster_item = tf.constant(2*np.random.random_sample(
-                        (1, params.latent_size)) - 1, name='cluster_mean')
-                    cluster_item = cluster_item/(tf.sqrt(
-                        tf.reduce_sum(cluster_item**2)))
-                    cluster_mu_matrix.append(tf.cast(cluster_item, tf.float32))
-            c_means = tf.concat(cluster_mu_matrix, 0)
-            c_means = tf.Print(c_means, [tf.shape(c_means), c_means], first_n=1)
-            return c_means, c_sigma
         if params.prior == 'Normal':
             # kld between normal distributions KL(q, p), see Kingma et.al
             kld = -0.5 * tf.reduce_mean(
@@ -139,14 +125,18 @@ def main(params):
         elif params.prior == 'GMM':
             # initialize sigma as constant, mu drawn randomly
             # TODO: finish GMM loss implementation
-            c_means, c_sigma = init_clusters(90)
+            c_means, c_sigma = init_clusters(params.num_clusters,
+                                             params.latent_size)
+            decoder.cap_clusters = c_means
             kld = -0.5 * tf.reduce_mean(
                 tf.reduce_sum(
                     1 + tf.log(tf.square(qz.distribution.std) + 0.00001)
                     - tf.square(qz.distribution.mean)
                     - tf.square(qz.distribution.std), 1))
         elif params.prior == 'AG':
-            c_means, c_sigma = init_clusters(90)
+            c_means, c_sigma = init_clusters(params.num_clusters,
+                                             params.latent_size)
+            decoder.cap_clusters = c_means
             kld_clusters = 0.5 + tf.log(qz.distribution.std+ 0.00001)\
              - tf.log(c_sigma + 0.00001) - (
                  tf.square(qz.distribution.mean - tf.matmul(
@@ -173,8 +163,11 @@ def main(params):
     if params.fine_tune or params.restore:
         annealing = tf.constant(1.0)
     else:
-        annealing = (tf.tanh(
-            (tf.to_float(anneal) - 1000 * params.ann_param)/1000) + 1)/2
+        if params.ann_param > 1:
+            annealing = (tf.tanh(
+                (tf.to_float(anneal) - 1000 * params.ann_param)/1000) + 1)/2
+        else:
+            annealing = tf.constant(1.0)
     # overall loss reconstruction loss - kl_regularization
     if not params.no_encoder:
         lower_bound = rec_loss + tf.multiply(
@@ -287,7 +280,6 @@ def main(params):
                         val_rec.append(rl)
                     print("Validation reconstruction loss: {}".format(
                         np.mean(val_rec)))
-                    print(np.shape(val_rec))
                     print("-----------------------------------------------")
                 validate()
                 # save model
