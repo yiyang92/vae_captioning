@@ -59,8 +59,8 @@ class Decoder():
                     return tf.convert_to_tensor(cl_num, dtype=tf.int64)
                 c_indices = tf.cond(pred, true, false)
                 # cap_clusers=[num_clusters, num_z]
-                c_indices = tf.Print(c_indices, [tf.shape(c_indices),
-                                                 c_indices])
+                # c_indices = tf.Print(c_indices, [tf.shape(c_indices),
+                #                                  c_indices])
                 means = tf.gather(self.cap_clusters, c_indices, axis=0)
                 # if only one cluster (any better way?)
                 def false(): return means
