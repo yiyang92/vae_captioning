@@ -1,7 +1,8 @@
 import tensorflow as tf
 from tensorflow import layers
 import zhusuan as zs
-from utils.rnn_model import make_rnn_cell, rnn_placeholders
+from utils.rnn_model import make_rnn_cell
+
 
 class Encoder():
     def __init__(self, images_fv, captions, lengths, params):
@@ -54,8 +55,7 @@ class Encoder():
                                                          scope=scope1)
             # [batch_size, 2 * lstm_hidden_size]
             # final_state = ((c, h), )
-            final_state = tf.concat(values=final_state[0], axis=1,
-                                    name="encoder_hidden")
+            final_state = final_state[0][1]
             if self.params.prior == 'Normal':
                 lz_mean = layers.dense(inputs=final_state,
                                        units=self.params.latent_size,
@@ -63,10 +63,11 @@ class Encoder():
                 lz_logstd = layers.dense(inputs=final_state,
                                          units=self.params.latent_size,
                                          activation=None)
+                lz_std = tf.exp(lz_logstd)
             # define latent variable`s Stochastic Tensor
             # add mu_k, sigma_k, CVAe ag-cvae
-            tm_list = [] # means
-            tl_list = [] # variances
+            tm_list = []  # means
+            tl_list = []  # log standard deviations
             if self.params.prior == 'GMM':
                 cluster = tf.squeeze(tf.multinomial(self.c_i_ph, 1))
                 indices = tf.squeeze(tf.range(tf.shape(self.c_i_ph)[0]))
@@ -84,7 +85,7 @@ class Encoder():
                 tm_list = tf.concat(tm_list, 1)
                 tl_list = tf.concat(tl_list, 1)
                 lz_mean = tf.gather_nd(tm_list, cluster)
-                lz_logstd = tf.gather_nd(tl_list, cluster)
+                lz_std = tf.gather_nd(tf.exp(tl_list), cluster)
 
             if self.params.prior == 'AG':
                 # ck*N(mu, sigma)
@@ -103,7 +104,7 @@ class Encoder():
                 tl_list = tf.concat(tl_list, 1)
                 c_i_exp = tf.expand_dims(self.c_i_ph, 1)
                 lz_mean = tf.squeeze(tf.matmul(c_i_exp, tm_list), 1)
-                lz_logstd = tf.squeeze(tf.matmul(c_i_exp, tl_list), 1)
-            z = zs.Normal('z', lz_mean, lz_logstd, group_event_ndims=1,
+                lz_std = tf.squeeze(tf.matmul(c_i_exp, tf.exp(tl_list)), 1)
+            z = zs.Normal('z', mean=lz_mean, std=lz_std, group_event_ndims=1,
                           n_samples=self.params.gen_z_samples)
         return z, tm_list, tl_list

@@ -1,13 +1,9 @@
-import os
-import json
 import numpy as np
 import tensorflow as tf
-import zhusuan as zs
+import os
 from tensorflow import layers
-from tensorflow.python.util.nest import flatten
 # import utils
 from utils.data import Data
-from utils.rnn_model import make_rnn_cell, rnn_placeholders
 from utils.parameters import Parameters
 from utils.image_embeddings import vgg16
 from utils.caption_utils import preprocess_captions
@@ -17,6 +13,7 @@ from vae_model.encoder import Encoder
 from ops import inference, optimizers
 
 print("Tensorflow version: ", tf.__version__)
+
 
 def main(params):
     # load data, class data contains captions, images, image features (if avaliable)
@@ -83,12 +80,12 @@ def main(params):
     else:
         features = image_batch
     # forward pass is expensive, so can use this method to reduce computation
-    if params.num_captions > 1 and params.mode == 'training': #[batch_size, 4096]
+    if params.num_captions > 1 and params.mode == 'training':  # [b_s, 4096]
         features_tiled = tf.tile(tf.expand_dims(features, 1),
                                  [1, params.num_captions, 1])
         features = tf.reshape(features_tiled,
                               [tf.shape(features)[0] * params.num_captions,
-                               params.cnn_feature_size])
+                               params.cnn_feature_size])  # [5 * b_s, 4096]
     # dictionary
     cap_dict = data.dictionary
     params.vocab_size = cap_dict.vocab_size
@@ -117,19 +114,20 @@ def main(params):
     if not params.no_encoder:
         with tf.variable_scope("encoder"):
             qz, tm_list, tv_list = encoder.q_net()
+
         def init_clusters(num_clusters):
             # initialize sigma as constant, mu drawn randomly
-            z_size = params.latent_size
             c_sigma = tf.constant(0.1)
             cluster_mu_matrix = []
             for id_cluster in range(params.num_clusters):
                 with tf.variable_scope("cl_init_mean_{}".format(id_cluster)):
-                    cluster_item = 2*np.random.random_sample(
-                        (1, params.latent_size)) - 1
+                    cluster_item = tf.constant(2*np.random.random_sample(
+                        (1, params.latent_size)) - 1, name='cluster_mean')
                     cluster_item = cluster_item/(tf.sqrt(
                         tf.reduce_sum(cluster_item**2)))
                     cluster_mu_matrix.append(tf.cast(cluster_item, tf.float32))
             c_means = tf.concat(cluster_mu_matrix, 0)
+            c_means = tf.Print(c_means, [tf.shape(c_means), c_means], first_n=1)
             return c_means, c_sigma
         if params.prior == 'Normal':
             # kld between normal distributions KL(q, p), see Kingma et.al
@@ -149,8 +147,8 @@ def main(params):
                     - tf.square(qz.distribution.std), 1))
         elif params.prior == 'AG':
             c_means, c_sigma = init_clusters(90)
-            kld_clusters = 1 + tf.log(qz.distribution.std+ 0.00001)\
-             -  tf.log(c_sigma + 0.00001) - (
+            kld_clusters = 0.5 + tf.log(qz.distribution.std+ 0.00001)\
+             - tf.log(c_sigma + 0.00001) - (
                  tf.square(qz.distribution.mean - tf.matmul(
                      tf.squeeze(c_i), c_means)) + tf.square(
                          qz.distribution.std))/(tf.square(c_sigma)+0.0000001)
@@ -172,7 +170,7 @@ def main(params):
     rec_loss = tf.losses.get_total_loss()
     # kld weight annealing
     anneal = tf.placeholder_with_default(0, [])
-    if params.fine_tune:
+    if params.fine_tune or params.restore:
         annealing = tf.constant(1.0)
     else:
         annealing = (tf.tanh(
@@ -267,8 +265,9 @@ def main(params):
                                                                             np.mean(lb),
                                                                             rl,
                                                                             ))
-                val_vlb, val_rec = [], []
+
                 def validate():
+                    val_rec = []
                     for f_images_batch, captions_batch, cl_batch, c_v in val_gen.next_batch(
                         use_obj_vectors=params.use_c_v,
                         num_captions=params.num_captions):
@@ -284,12 +283,11 @@ def main(params):
                         if params.use_c_v or (
                             params.prior == 'GMM' or params.prior == 'AG'):
                             feed.update({c_i: c_v[:, 1:]})
-                        kl, rl, lb = sess.run([kld, rec_loss, lower_bound],
-                                              feed_dict=feed)
-                        val_vlb.append(lb)
+                        rl = sess.run([rec_loss], feed_dict=feed)
                         val_rec.append(rl)
-                    print("Validation VLB: {} Rec_loss: {}".format(np.mean(val_vlb),
-                                                                   np.mean(val_rec)))
+                    print("Validation reconstruction loss: {}".format(
+                        np.mean(val_rec)))
+                    print(np.shape(val_rec))
                     print("-----------------------------------------------")
                 validate()
                 # save model
@@ -305,6 +303,7 @@ def main(params):
         if params.mode == "inference":
             inference.inference(params, decoder, val_gen,
                                 test_gen, image_f_inputs, saver, sess)
+
 
 if __name__ == '__main__':
     params = Parameters()

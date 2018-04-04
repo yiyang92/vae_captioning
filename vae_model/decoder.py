@@ -1,16 +1,15 @@
 import tensorflow as tf
 from tensorflow import layers
-from tensorflow.python.util.nest import flatten
-
 import zhusuan as zs
 from utils.rnn_model import make_rnn_cell, rnn_placeholders
 import numpy as np
 
 from utils.top_n import TopN, Beam
 
+
 class Decoder():
-    """Decoder class
-    """
+    """Decoder class."""
+
     def __init__(self, images_fv, captions, lengths,
                  params, data_dict):
         """
@@ -134,7 +133,7 @@ class Decoder():
         stop_word_idx = self.data_dict.word2idx['<EOS>']
         cap_list = [None] * in_pictures.shape[0]
         with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
-            _, _, shpe, states = self.px_z_fi({}, gen_mode = True)
+            _, _, shpe, states = self.px_z_fi({}, gen_mode=True)
         init_state, out_state, sample = states
         cap_raw = []
         for i in range(len(in_pictures)):
@@ -149,11 +148,11 @@ class Decoder():
                 feed = {self.captions: np.array(input_seq)[-1].reshape([1, 1]),
                         self.lengths: [len(input_seq)],
                         image_f_inputs: np.expand_dims(in_pictures[i], 0)}
-                if self.c_i != None:
+                if self.c_i is not None:
                     feed.update({self.c_i_ph: np.expand_dims(c_v[i], 0)})
                 # for the first decoder step, the state is None
                 if state is not None:
-                     feed.update({init_state: state})
+                    feed.update({init_state: state})
                 next_word_probs, state = sess.run([sample, out_state],
                                                   feed)
                 if self.params.sample_gen == 'greedy':
@@ -205,7 +204,7 @@ class Decoder():
             feed = {self.captions: np.array(seed).reshape([1, 1]),
                     self.lengths: [1],
                     image_f_inputs: np.expand_dims(in_pictures[im], 0)}
-            if self.c_i != None:
+            if self.c_i is not None:
                 feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
             # probs are normalized probs
             probs, state = sess.run([sample, out_state], feed)
@@ -235,7 +234,7 @@ class Decoder():
                             self.lengths: [length],
                             image_f_inputs: np.expand_dims(in_pictures[im], 0),
                             in_state: state}
-                    if self.c_i != None:
+                    if self.c_i is not None:
                         feed.update({self.c_i_ph: np.expand_dims(c_v[im], 0)})
                     probs, new_state = sess.run([sample, out_state], feed)
                     probs_list.append(probs)
