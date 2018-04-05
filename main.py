@@ -141,7 +141,7 @@ def main(params):
              - tf.log(c_sigma + 0.00001) - (
                  tf.square(qz.distribution.mean - tf.matmul(
                      tf.squeeze(c_i), c_means)) + tf.square(
-                         qz.distribution.std))/(tf.square(c_sigma)+0.0000001)
+                         qz.distribution.std))/(2*tf.square(c_sigma)+0.0000001)
             kld = -0.5 * tf.reduce_sum(kld_clusters, 1)
     with tf.variable_scope("decoder"):
         if params.no_encoder:
