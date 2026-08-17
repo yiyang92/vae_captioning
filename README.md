@@ -1,3 +1,5 @@
+
+
 # Diverse and Accurate Image Description Using a Variational Auto-Encoder with an Additive Gaussian Encoding Space
 
 ## Overview
@@ -54,7 +56,7 @@ python gen_caption.py -h
 ```
 For example:
 ```
-python -i gen_caption.py --img_path ./images/COCO_val2014_000000233527.jpg --checkpoint ./checkpoints/gaussian_nocv.ckpt --params_path ./pickles/params_Normal_False_gaussian_nocv_False
+python -i gen_caption.py --img_path ./images/COCO_val2014_000000233527.jpg --checkpoint ./checkpoints/gaussian_nocv.ckpt --params_path ./pickles/params_Normal_False_gaussian_nocv_False.pickle
 ```
 Where:
 - --params_path: saved Parameters class, can be saved by calling main.py --save_params
